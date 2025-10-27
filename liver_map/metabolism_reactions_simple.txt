@@ -1,0 +1,7 @@
+{"Glucose": 1} = lactase(input={"Lactose": 1})'
+{"Glucose-6P": 1, "ATP": 1} = hexokinase(input={"Glucose": 1, "ATP": 1})'
+{"Glucose-1P": 1} = phosphoglucomutase(input={"Glucose-6P": 1})'
+{"UDP-Glucose": 1, "PPi": 1} = udp_glucose_pyrophosphorylase(input={"Glucose-1P": 1, "UTP": 1})'
+{"(Glycogen)n+1": 1, "UDP": 1} = glycogen_synthase(input={"(Glycogen)n": 1, "UDP-Glucose": 1})'
+{"Acyl-CoA": 1, "AMP": 1, "PPi": 1} = acyl_CoA_synthetase(input={"Fatty_acid(C16)": 1, "ATP": 1, "CoA": 1})'
+{"Acetyl-CoA": 8, "NADPH": 14, "ATP": 7} = fatty_acid_synthase(input={"Acyl-CoA": 1, "ATP": 1, "NADPH": 2})

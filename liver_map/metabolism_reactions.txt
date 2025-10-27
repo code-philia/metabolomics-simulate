@@ -1,0 +1,40 @@
+{"Glucose-6P": 1, "ADP": 1} = hexokinase(input={"Glucose": 1, "ATP": 1})
+{"Fructose-6P": 1} = phosphoglucose_isomerase(input={"Glucose-6P": 1})
+{"F1,6BP": 1, "ADP": 1} = phosphofructokinase(input={"Fructose-6P": 1, "ATP": 1})
+{"DHAP": 1, "G3P": 1} = aldolase(input={"F1,6BP": 1})
+{"Pyruvate": 2, "ATP": 2, "NADH": 2} = glycolysis(input={"Glucose": 1, "ADP": 2, "NAD+": 2})
+{"Lactate": 1, "NAD+": 1} = lactate_dehydrogenase(input={"Pyruvate": 1, "NADH": 1})
+{"OAA": 1, "NADH": 1} = malate_dehydrogenase(input={"Malate": 1, "NAD+": 1})
+{"Glucose": 1} = gluconeogenesis(input={"Pyruvate": 2, "ATP": 6, "NADH": 2})
+{"Glucose-1P": 1} = glycogen_phosphorylase(input={"Glycogen": 1, "Pi": 1})
+{"UDP-Glucose": 1, "PPi": 1} = udp_glucose_pyrophosphorylase(input={"Glucose-1P": 1, "UTP": 1})
+{"Glycogen": 1} = glycogen_synthase(input={"UDP-Glucose": 1})
+{"Acyl-CoA": 1, "AMP": 1, "PPi": 1} = acyl_CoA_synthetase(input={"Fatty_acid(Cn)": 1, "ATP": 1, "CoA": 1})
+{"Acetyl-CoA": 1, "FADH2": 1, "NADH": 1} = beta_oxidation(input={"Acyl-CoA": 1, "FAD": 1, "NAD+": 1})
+{"TAG": 1} = triglyceride_synthesis(input={"G3P-Lipid": 1, "Acyl-CoA": 3})
+{"Glu": 1, "αKG": 1} = transamination(input={"Pyruvate": 1, "Ala": 1})
+{"NH3": 1, "αKG": 1} = glutamate_dehydrogenase(input={"Glu": 1, "NAD+": 1})
+{"Carbamoyl-P": 1} = carbamoyl_phosphate_synthetase(input={"NH3": 1, "CO2": 1, "ATP": 2})
+{"Citrulline": 1} = ornithine_transcarbamylase(input={"Orn": 1, "Carbamoyl-P": 1})
+{"Argininosuccinate": 1} = argininosuccinate_synthetase(input={"Citrulline": 1, "Asp": 1, "ATP": 1})
+{"Arg": 1, "Fumarate": 1} = argininosuccinate_lyase(input={"Argininosuccinate": 1})
+{"Urea": 1, "Orn": 1} = arginase(input={"Arg": 1, "H2O": 1})
+{"Bile_acid": 1} = bile_acid_synthesis(input={"Cholesterol": 1, "NADPH": 1, "O2": 1})
+{"CE": 1, "CoA": 1} = acyl_CoA_cholesterol_acyltransferase(input={"Cholesterol": 1, "Acyl-CoA": 1})
+{"Biliverdin": 1, "CO": 1, "Fe2+": 1} = heme_oxygenase(input={"Heme": 1, "O2": 1, "NADPH": 1})
+{"Unconjugated_Bilirubin": 1} = biliverdin_reductase(input={"Biliverdin": 1, "NADPH": 1})
+{"Conjugated_Bilirubin": 1} = udp_glucuronyltransferase(input={"Unconjugated_Bilirubin": 1, "UDP-Glucuronic_acid": 1})
+{"Acetaldehyde": 1, "NADH": 1} = alcohol_dehydrogenase(input={"Ethanol": 1, "NAD+": 1})
+{"Acetate": 1, "NADH": 1} = aldehyde_dehydrogenase(input={"Acetaldehyde": 1, "NAD+": 1})
+{"Acetyl-CoA": 1, "AMP": 1, "PPi": 1} = acetyl_CoA_synthetase(input={"Acetate": 1, "ATP": 1, "CoA": 1})
+{"Acetoacetate": 1, "CoA": 1} = hmg_CoA_lyase(input={"HMG-CoA": 1})
+{"β-HB": 1, "NAD+": 1} = bdh(input={"Acetoacetate": 1, "NADH": 1})
+{"Acetone": 1} = spontaneous_decarboxylation(input={"Acetoacetate": 1})
+
+# {"Glucose": 1} = lactase(input={"Lactose": 1})'
+# {"Glucose-6P": 1, "ATP": 1} = hexokinase(input={"Glucose": 1, "ATP": 1})'
+# {"Glucose-1P": 1} = phosphoglucomutase(input={"Glucose-6P": 1})'
+# {"UDP-Glucose": 1, "PPi": 1} = udp_glucose_pyrophosphorylase(input={"Glucose-1P": 1, "UTP": 1})'
+# {"(Glycogen)n+1": 1, "UDP": 1} = glycogen_synthase(input={"(Glycogen)n": 1, "UDP-Glucose": 1})'
+# {"Acyl-CoA": 1, "AMP": 1, "PPi": 1} = acyl_CoA_synthetase(input={"Fatty_acid(C16)": 1, "ATP": 1, "CoA": 1})'
+# {"Acetyl-CoA": 8, "NADPH": 14, "ATP": 7} = fatty_acid_synthase(input={"Acyl-CoA": 1, "ATP": 1, "NADPH": 2})
