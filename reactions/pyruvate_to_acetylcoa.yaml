@@ -1,0 +1,13 @@
+# 丙酮酸脱羧生成乙酰辅酶A
+name: pyruvate_to_acetylcoa
+capacity: 0.3
+
+substrates:
+  Pyruvate: 1
+  CoA: 1
+  NAD+: 1
+
+products:
+  AcetylCoA: 1
+  CO2: 1
+  NADH: 1

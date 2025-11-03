@@ -107,17 +107,6 @@ class CellSimulator:
 
 
 if __name__ == "__main__":
-    # initial_pool = {
-    #     "Glc": 10.0,   # internal glucose
-    #     "O2": 5.0,    # internal oxygen
-    #     "ATP": 2.0,
-    #     "ADP": 5.0,
-    #     "CO2": 0.1,
-    #     "Pi": 5.0,
-    #     "NADH": 0.5,
-    #     "NAD+": 2.0,
-    #     "H2O": 10.0
-    # }
 
     initial_pool = {
         "Glc": 5.0, "O2": 5.0,
@@ -127,41 +116,7 @@ if __name__ == "__main__":
         "FADH2": 1.0, "FAD": 1.0,
         "CO2": 0.1, "H2O": 10.0,
     }
-
-    # Environment concentrations (available for uptake)
-    # external = {
-    #     "Glc_ext": 400.0,
-    #     "O2_ext": 999.0
-    # }
-    # external = {
-    #     "Glc_ext": 20.0,
-    #     "O2_ext": 10.0
-    # }
-
-    # reactions = [
-    #     # Uptake: environment -> internal (producer)
-    #     Reaction("Glc_uptake", inputs={"Glc_ext": 0.5}, outputs={"Glc": 0.5}, capacity=0.524),
-    #     Reaction("O2_uptake", inputs={"O2_ext": 0.5}, outputs={"O2": 0.5}, capacity=0.238),
-    #     # Reaction("Glc_uptake", inputs={"Glc_ext": 0.5}, outputs={"Glc": 0.5}, capacity=1.0),
-    #     # Reaction("O2_uptake", inputs={"O2_ext": 0.5}, outputs={"O2": 0.5}, capacity=1.0),
-
-    #     # Glycolysis: Glc + 2 ADP + 2 Pi -> 2 ATP + 2 NADH + 2 Pyruvate (pyruvate omitted, use CO2 eventually)
-    #     Reaction("Glycolysis", inputs={"Glc": 1.0, "ADP": 2.0, "Pi": 2.0, "NAD+": 2.0}, outputs={"ATP": 2.0, "NADH": 2.0, "CO2": 0.4}, capacity=0.5),
-        
-    #     # Pyruvate oxidation + TCA + OxPhos combined (very coarse): Pyruvate + O2 + ADP + Pi + NADH -> many ATP + CO2 + NAD+
-    #     # We combine NADH usage into OxPhos: use 4 NADH -> 12 ATP (coarse)
-    #     Reaction("OxidativePhosphorylation", inputs={"NADH": 4.0, "O2": 1.0, "ADP": 4.0, "Pi":4.0}, outputs={"ATP":12.0, "CO2":2.0, "NAD+":4.0, "H2O":2.0}, capacity=0.3, threshold=("NADH", 0.1)),
-        
-    #     # ATP consumption (cellular work): ATP -> ADP + Pi
-    #     Reaction("ATP_use", inputs={"ATP": 0.2}, outputs={"ADP": 0.2, "Pi":0.2}, capacity=5.0),
-        
-    #     # NAD+ regeneration via side pathways (small)
-    #     Reaction("NAD_regen", inputs={"NADH": 0.1}, outputs={"NAD+": 0.1}, capacity=0.5),
-
-    #     # CO2 export (simple sink)
-    #     Reaction("CO2_export", inputs={"CO2": 1.0}, outputs={}, capacity=0.5),
-    # ]
-
+    
     reactions = [
         # 1. 糖酵解（输入葡萄糖，产生丙酮酸 + ATP + NADH）
         Reaction("glycolysis", {"Glc": 1, "NAD+": 2, "ADP": 2},

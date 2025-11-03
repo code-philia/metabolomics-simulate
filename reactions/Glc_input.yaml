@@ -1,0 +1,8 @@
+# 葡萄糖输入（外源补给）
+name: Glc_input
+capacity: 0.04
+
+substrates: {}
+
+products:
+  Glc: 1

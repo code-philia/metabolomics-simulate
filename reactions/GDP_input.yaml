@@ -1,0 +1,8 @@
+# GDP输入（维持核苷酸循环）
+name: GDP_input
+capacity: 0.005
+
+substrates: {}
+
+products:
+  GDP: 1

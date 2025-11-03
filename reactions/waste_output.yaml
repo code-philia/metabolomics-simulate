@@ -1,0 +1,9 @@
+# 废物输出（CO2、H2O排出）
+name: waste_output
+capacity: 0.5
+
+substrates:
+  CO2: 1
+  H2O: 1
+
+products: {}

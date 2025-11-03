@@ -1,0 +1,13 @@
+# 糖酵解：Glc → Pyruvate + ATP + NADH
+name: glycolysis
+capacity: 0.5
+
+substrates:
+  Glc: 1
+  NAD+: 2
+  ADP: 2
+
+products:
+  Pyruvate: 2
+  ATP: 2
+  NADH: 2

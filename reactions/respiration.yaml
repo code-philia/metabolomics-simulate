@@ -1,0 +1,16 @@
+# 氧化磷酸化 + NADH穿梭系统
+name: "respiration"
+capacity: 0.4
+
+substrates:
+  NADH: 3
+  FADH2: 1
+  ADP: 4
+  Pi: 4
+  O2: 1.5
+
+products:
+  ATP: 4
+  NAD+: 3
+  FAD: 1
+  H2O: 3

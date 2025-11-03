@@ -1,0 +1,18 @@
+# 三羧酸循环（TCA cycle）
+name: "TCA_cycle"
+capacity: 0.3
+
+substrates:
+  Acetyl_CoA: 1
+  NAD+: 3
+  FAD: 1
+  GDP: 1
+  Pi: 1
+  H2O: 2
+
+products:
+  CoA: 1
+  CO2: 2
+  NADH: 3
+  FADH2: 1
+  GTP: 1

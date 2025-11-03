@@ -1,0 +1,10 @@
+# 细胞活动消耗ATP
+name: ATP_use
+capacity: 0.1
+
+substrates:
+  ATP: 1
+
+products:
+  ADP: 1
+  Pi: 1

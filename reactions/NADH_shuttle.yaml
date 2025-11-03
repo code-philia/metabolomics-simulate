@@ -1,0 +1,9 @@
+# NADH穿梭系统：补充NAD+循环
+name: NADH_shuttle
+capacity: 1.0
+
+substrates:
+  NADH: 1
+
+products:
+  NAD+: 1

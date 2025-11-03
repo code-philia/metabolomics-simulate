@@ -1,0 +1,8 @@
+# 氧气输入（呼吸）
+name: O2_input
+capacity: 0.007
+
+substrates: {}
+
+products:
+  O2: 1
