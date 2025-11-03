@@ -12,21 +12,6 @@ This project simulates simplified metabolic networks using modular, human-readab
 
 ---
 
-## 🧱 File Structure
-
-project/
-├── simulation.py
-├── tools/
-│ ├── reaction.py
-│ └── utils.py
-├── reactions/
-│ ├── glycolysis_step1.yaml
-│ └── oxidative_phosphorylation.yaml
-│ └── ...
-└── ini_pool.yaml
-
----
-
 ## 🧬 Example Run
 
 ```bash
