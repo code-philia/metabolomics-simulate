@@ -1,0 +1,19 @@
+Glc: 10.0
+Pyruvate: 5.0
+Acetyl-CoA: 3.0
+FA-CoA: 2.0
+CoA: 3.0
+
+ATP: 5.0
+ADP: 5.0
+NADH: 3.0
+NAD+: 3.0
+FADH2: 2.0
+FAD: 2.0
+
+CO2: 5.0
+O2: 5.0
+H2O: 10.0
+
+NH3: 1.0
+Urea: 0.5

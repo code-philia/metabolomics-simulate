@@ -1,0 +1,456 @@
+{
+  "metabolites": {
+    "Dietary_TAG": {
+      "initial": 1.0,
+      "steady_state": 0.5
+    },
+    "Emulsified_TAG": {
+      "initial": 0.1,
+      "steady_state": 0.625
+    },
+    "2-MAG": {
+      "initial": 0.1,
+      "steady_state": 1.1692135536681314
+    },
+    "FFA": {
+      "initial": 0.1,
+      "steady_state": 1.3646531445374033
+    },
+    "Dietary_Chol": {
+      "initial": 0.1,
+      "steady_state": 0.08333333333333338
+    },
+    "FC": {
+      "initial": 0.1,
+      "steady_state": 1.041329642582469
+    },
+    "CE": {
+      "initial": 0.1,
+      "steady_state": 139.27869795117581
+    },
+    "TAG": {
+      "initial": 0.1,
+      "steady_state": 0.7513139069927823
+    },
+    "Chylomicron": {
+      "initial": 0.1,
+      "steady_state": 0.993162809970976
+    },
+    "Chylomicron_Remnant": {
+      "initial": 0.1,
+      "steady_state": 1.4890719953805867
+    },
+    "VLDL": {
+      "initial": 0.1,
+      "steady_state": 0.36914785149459123
+    },
+    "IDL": {
+      "initial": 0.1,
+      "steady_state": 0.4617274890148722
+    },
+    "LDL": {
+      "initial": 0.1,
+      "steady_state": 0.30541523825980554
+    },
+    "HDL": {
+      "initial": 0.1,
+      "steady_state": 1.3722861225618013e-42
+    },
+    "ApoA_I": {
+      "initial": 0.05,
+      "steady_state": 5.14008246194416e-67
+    },
+    "Glycerol": {
+      "initial": 0.1,
+      "steady_state": 0.6275068903804589
+    },
+    "G3P": {
+      "initial": 0.5,
+      "steady_state": 4.011371396709076
+    },
+    "FA": {
+      "initial": 0.1,
+      "steady_state": 1.6082379313292599
+    },
+    "Acyl_CoA": {
+      "initial": 0.1,
+      "steady_state": 0.4701622294209942
+    },
+    "Acetyl_CoA": {
+      "initial": 0.1,
+      "steady_state": 1.8518609298768298
+    },
+    "Ketone": {
+      "initial": 0.1,
+      "steady_state": 6.450191005861644
+    },
+    "ATP": {
+      "initial": 0.1,
+      "steady_state": 5987.973391018115
+    },
+    "Glucose": {
+      "initial": 5.0,
+      "steady_state": 1.538461538461539
+    },
+    "DNL_FA": {
+      "initial": 0.1,
+      "steady_state": 0.19230769230769248
+    },
+    "Bile_Acid": {
+      "initial": 0.1,
+      "steady_state": 0.5207352126104451
+    },
+    "Conjugated_Bile_Acid": {
+      "initial": 0.1,
+      "steady_state": 0.3471938405830172
+    },
+    "Bile": {
+      "initial": 0.1,
+      "steady_state": 0.3472313900744366
+    }
+  },
+  "reactions": {
+    "R_emuls": {
+      "name": "\u4e73\u5316",
+      "inputs": {
+        "Dietary_TAG": 1.0
+      },
+      "outputs": {
+        "Emulsified_TAG": 1.0
+      },
+      "k": 1.0,
+      "steady_rate": 0.5
+    },
+    "R_lipase_intestinal": {
+      "name": "\u80f0\u8102\u80aa\u9176\u6c34\u89e3",
+      "inputs": {
+        "Emulsified_TAG": 1.0
+      },
+      "outputs": {
+        "2-MAG": 1.0,
+        "FFA": 2.0
+      },
+      "k": 0.8,
+      "steady_rate": 0.5
+    },
+    "R_reesterify_intestine": {
+      "name": "\u91cd\u916f\u5316\uff08\u80a0\uff09",
+      "inputs": {
+        "2-MAG": 1.0,
+        "FFA": 1.0
+      },
+      "outputs": {
+        "TAG": 1.0
+      },
+      "k": 0.5,
+      "steady_rate": 0.7977854763244837
+    },
+    "R_chol_hydro": {
+      "name": "\u80c6\u56fa\u9187\u916f\u9176\u6c34\u89e3",
+      "inputs": {
+        "Dietary_Chol": 1.0
+      },
+      "outputs": {
+        "FC": 1.0
+      },
+      "k": 0.6,
+      "steady_rate": 0.05000000000000003
+    },
+    "R_chol_esterify": {
+      "name": "\u80c6\u56fa\u9187\u916f\u5316",
+      "inputs": {
+        "FC": 1.0
+      },
+      "outputs": {
+        "CE": 1.0
+      },
+      "k": 0.4,
+      "steady_rate": 0.4165318570329876
+    },
+    "R_chylomicron_assembly": {
+      "name": "\u4e73\u7cdc\u5fae\u7c92\u88c5\u914d\uff08ApoB48+MTP\uff09",
+      "inputs": {
+        "TAG": 1.0,
+        "CE": 0.2
+      },
+      "outputs": {
+        "Chylomicron": 1.0
+      },
+      "k": 0.3,
+      "steady_rate": 0.6049501965243306
+    },
+    "R_LPL_chyl": {
+      "name": "LPL\u4f5c\u7528\u4e8e\u4e73\u7cdc\u5fae\u7c92",
+      "inputs": {
+        "Chylomicron": 1.0
+      },
+      "outputs": {
+        "2-MAG": 0.5,
+        "FFA": 1.0,
+        "Chylomicron_Remnant": 1.0
+      },
+      "k": 0.6,
+      "steady_rate": 0.5958976859825855
+    },
+    "R_FFA_transport": {
+      "name": "FFA\u8f6c\u8fd0\u4e3aFA\uff08\u7ec6\u80de\u6444\u53d6\uff09",
+      "inputs": {
+        "FFA": 1.0
+      },
+      "outputs": {
+        "FA": 1.0
+      },
+      "k": 0.7,
+      "steady_rate": 0.9552572011761822
+    },
+    "R_acs": {
+      "name": "\u9170\u57faCoA\u5408\u6210\uff08ACS\uff09",
+      "inputs": {
+        "FA": 1.0
+      },
+      "outputs": {
+        "Acyl_CoA": 1.0
+      },
+      "k": 0.9,
+      "steady_rate": 1.447414138196334
+    },
+    "R_beta_ox": {
+      "name": "\u03b2-\u6c27\u5316",
+      "inputs": {
+        "Acyl_CoA": 1.0
+      },
+      "outputs": {
+        "Acetyl_CoA": 1.0
+      },
+      "k": 0.8,
+      "steady_rate": 0.3761297835367954
+    },
+    "R_TCA": {
+      "name": "TCA\u4ea7\u751fATP",
+      "inputs": {
+        "Acetyl_CoA": 1.0
+      },
+      "outputs": {
+        "ATP": 10.0
+      },
+      "k": 0.7,
+      "steady_rate": 1.2963026509137807
+    },
+    "R_ketogenesis": {
+      "name": "\u916e\u4f53\u751f\u6210",
+      "inputs": {
+        "FA": 1.0
+      },
+      "outputs": {
+        "Ketone": 1.0
+      },
+      "k": 0.2,
+      "steady_rate": 0.321647586265852
+    },
+    "R_TAG_synth_g3p": {
+      "name": "TAG\u5408\u6210\uff08G3P\u9014\u5f84\uff09",
+      "inputs": {
+        "Acyl_CoA": 3.0,
+        "G3P": 1.0
+      },
+      "outputs": {
+        "TAG": 1.0
+      },
+      "k": 0.4,
+      "steady_rate": 0.1667616086707833
+    },
+    "R_TAG_hydrolysis": {
+      "name": "TAG\u6c34\u89e3\uff08\u5305\u62ecHSL\uff09",
+      "inputs": {
+        "TAG": 1.0
+      },
+      "outputs": {
+        "Glycerol": 1.0,
+        "FA": 2.0
+      },
+      "k": 0.5,
+      "steady_rate": 0.37565695349639117
+    },
+    "R_glycerol_kinase": {
+      "name": "\u7518\u6cb9\u6fc0\u9176GK",
+      "inputs": {
+        "Glycerol": 1.0
+      },
+      "outputs": {
+        "G3P": 1.0
+      },
+      "k": 0.6,
+      "steady_rate": 0.37650413422827533
+    },
+    "R_VLDL_assembly": {
+      "name": "VLDL\u88c5\u914d\uff08ApoB100\uff09",
+      "inputs": {
+        "TAG": 1.0
+      },
+      "outputs": {
+        "VLDL": 1.0
+      },
+      "k": 0.25,
+      "steady_rate": 0.18782847674819558
+    },
+    "R_LPL_VLDL": {
+      "name": "LPL\u4f5c\u7528\u4e8eVLDL",
+      "inputs": {
+        "VLDL": 1.0
+      },
+      "outputs": {
+        "IDL": 1.0,
+        "FFA": 1.0
+      },
+      "k": 0.5,
+      "steady_rate": 0.18457392574729561
+    },
+    "R_HL_IDL_to_LDL": {
+      "name": "HL\u4f5c\u7528 IDL->LDL",
+      "inputs": {
+        "IDL": 1.0
+      },
+      "outputs": {
+        "LDL": 1.0
+      },
+      "k": 0.4,
+      "steady_rate": 0.1846909956059489
+    },
+    "R_LDL_uptake": {
+      "name": "LDLR\u4ecb\u5bfcLDL\u6444\u53d6",
+      "inputs": {
+        "LDL": 1.0
+      },
+      "outputs": {
+        "FC": 1.0
+      },
+      "k": 0.6,
+      "steady_rate": 0.18324914295588332
+    },
+    "R_HDL_formation": {
+      "name": "ApoA-I + FC -> HDL",
+      "inputs": {
+        "ApoA_I": 1.0,
+        "FC": 1.0
+      },
+      "outputs": {
+        "HDL": 1.0
+      },
+      "k": 0.3,
+      "steady_rate": 1.6057560698822186e-67
+    },
+    "R_LCAT": {
+      "name": "LCAT\u5728HDL\u4e0a\u916f\u5316\u80c6\u56fa\u9187",
+      "inputs": {
+        "HDL": 1.0
+      },
+      "outputs": {
+        "HDL": 1.0,
+        "CE": 0.1
+      },
+      "k": 0.2,
+      "steady_rate": 2.7445722451236027e-43
+    },
+    "R_CETP": {
+      "name": "CETP\u5728VLDL-HDL\u95f4\u4ea4\u6362",
+      "inputs": {
+        "VLDL": 1.0,
+        "HDL": 1.0
+      },
+      "outputs": {
+        "VLDL": 1.0,
+        "HDL": 1.0
+      },
+      "k": 0.05,
+      "steady_rate": 2.532882368897661e-44
+    },
+    "R_chyl_remnant_uptake": {
+      "name": "\u4e73\u7cdc\u6b8b\u7c92\u5230\u809d",
+      "inputs": {
+        "Chylomicron_Remnant": 1.0
+      },
+      "outputs": {
+        "FC": 0.5
+      },
+      "k": 0.4,
+      "steady_rate": 0.5956287981522347
+    },
+    "R_bile_synth": {
+      "name": "\u80c6\u56fa\u9187->\u521d\u7ea7\u80c6\u6c41\u9178",
+      "inputs": {
+        "FC": 1.0
+      },
+      "outputs": {
+        "Bile_Acid": 1.0
+      },
+      "k": 0.1,
+      "steady_rate": 0.1041329642582469
+    },
+    "R_bile_conjug": {
+      "name": "\u80c6\u6c41\u9178\u7ed3\u5408\uff08\u80fa\uff09",
+      "inputs": {
+        "Bile_Acid": 1.0
+      },
+      "outputs": {
+        "Conjugated_Bile_Acid": 1.0
+      },
+      "k": 0.2,
+      "steady_rate": 0.10414704252208902
+    },
+    "R_bile_secretion": {
+      "name": "\u80c6\u6c41\u76d0\u5916\u6392 -> \u80c6\u6c41",
+      "inputs": {
+        "Conjugated_Bile_Acid": 1.0
+      },
+      "outputs": {
+        "Bile": 1.0
+      },
+      "k": 0.3,
+      "steady_rate": 0.10415815217490516
+    },
+    "R_glucose_to_DNL": {
+      "name": "\u8461\u8404\u7cd6->DNL\u4ea7\u751f\u8102\u80aa\u9178",
+      "inputs": {
+        "Glucose": 1.0
+      },
+      "outputs": {
+        "DNL_FA": 1.0
+      },
+      "k": 0.05,
+      "steady_rate": 0.07692307692307696
+    },
+    "R_DNL_to_FA": {
+      "name": "DNL\u4ea7\u751f\u7684\u524d\u4f53\u8f6c\u6210FA",
+      "inputs": {
+        "DNL_FA": 1.0
+      },
+      "outputs": {
+        "FA": 1.0
+      },
+      "k": 0.4,
+      "steady_rate": 0.076923076923077
+    },
+    "R_glycolysis_to_AcCoA": {
+      "name": "\u7cd6\u9175\u89e3->\u4e59\u9170CoA",
+      "inputs": {
+        "Glucose": 1.0
+      },
+      "outputs": {
+        "Acetyl_CoA": 1.0
+      },
+      "k": 0.6,
+      "steady_rate": 0.9230769230769234
+    },
+    "R_HDL_to_cholesterol": {
+      "name": "SR-BI\u5c06HDL\u80c6\u56fa\u9187\u4ea4\u7ed9\u809d/\u7ec6\u80de",
+      "inputs": {
+        "HDL": 1.0
+      },
+      "outputs": {
+        "FC": 0.5
+      },
+      "k": 0.2,
+      "steady_rate": 2.7445722451236027e-43
+    }
+  }
+}

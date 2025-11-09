@@ -29,7 +29,7 @@ def load_reactions_from_folder(folder_path):
                     name=data["name"],
                     substrates=data.get("substrates", {}),
                     products=data.get("products", {}),
-                    capacity=data.get("capacity", 1.0)
+                    capacity=1#data.get("capacity", 1.0)
                 )
             )
     return reactions

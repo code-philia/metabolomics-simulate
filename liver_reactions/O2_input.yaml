@@ -1,0 +1,7 @@
+name: O2_input
+capacity: 0.007
+
+substrates: {}
+
+products:
+  O2: 1

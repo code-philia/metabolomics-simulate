@@ -1,0 +1,28 @@
+{
+  "dictionary_file": "data/metabolic_sim/network_dictionary.json",
+  "combined_plot": "data/metabolic_sim/all_metabolites_grid.png",
+  "steady_state_sample": {
+    "Dietary_TAG": 0.5,
+    "Emulsified_TAG": 0.625,
+    "2-MAG": 1.1692135536681314,
+    "FFA": 1.3646531445374033,
+    "Dietary_Chol": 0.08333333333333338,
+    "FC": 1.041329642582469,
+    "CE": 139.27869795117581,
+    "TAG": 0.7513139069927823,
+    "Chylomicron": 0.993162809970976,
+    "Chylomicron_Remnant": 1.4890719953805867
+  },
+  "reaction_rates_sample": {
+    "R_emuls": 0.5,
+    "R_lipase_intestinal": 0.5,
+    "R_reesterify_intestine": 0.7977854763244837,
+    "R_chol_hydro": 0.05000000000000003,
+    "R_chol_esterify": 0.4165318570329876,
+    "R_chylomicron_assembly": 0.6049501965243306,
+    "R_LPL_chyl": 0.5958976859825855,
+    "R_FFA_transport": 0.9552572011761822,
+    "R_acs": 1.447414138196334,
+    "R_beta_ox": 0.3761297835367954
+  }
+}

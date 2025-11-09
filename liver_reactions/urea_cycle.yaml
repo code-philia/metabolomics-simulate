@@ -1,0 +1,11 @@
+name: urea_cycle
+capacity: 0.1
+
+substrates:
+  NH3: 1
+  CO2: 1
+  ATP: 2
+
+products:
+  Urea: 1
+  ADP: 2

@@ -1,0 +1,7 @@
+name: FA_input
+capacity: 0.002
+
+substrates: {}
+
+products:
+  FA-CoA: 1

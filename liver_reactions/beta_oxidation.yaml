@@ -1,0 +1,12 @@
+name: beta_oxidation
+capacity: 0.3
+
+substrates:
+  FA-CoA: 1
+  NAD+: 1
+  FAD: 1
+
+products:
+  Acetyl-CoA: 1
+  NADH: 1
+  FADH2: 1

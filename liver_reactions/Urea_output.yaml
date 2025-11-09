@@ -1,0 +1,7 @@
+name: Urea_output
+capacity: 0.005
+
+substrates:
+  Urea: 1
+
+products: {}

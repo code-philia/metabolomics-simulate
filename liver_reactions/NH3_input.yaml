@@ -1,0 +1,7 @@
+name: NH3_input
+capacity: 0.001
+
+substrates: {}
+
+products:
+  NH3: 1

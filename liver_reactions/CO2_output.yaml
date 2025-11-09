@@ -1,0 +1,7 @@
+name: CO2_output
+capacity: 0.01
+
+substrates:
+  CO2: 1
+
+products: {}

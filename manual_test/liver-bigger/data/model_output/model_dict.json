@@ -1,0 +1,610 @@
+{
+  "metabolites": {
+    "Dietary_TAG_gut": {
+      "index": 0,
+      "steady_state": 2.0
+    },
+    "Emulsified_TAG": {
+      "index": 1,
+      "steady_state": 17.658123318034313
+    },
+    "2MAG": {
+      "index": 2,
+      "steady_state": 77.48756192463054
+    },
+    "FFA_gut": {
+      "index": 3,
+      "steady_state": 1.239346216771693
+    },
+    "FFA_enterocyte": {
+      "index": 4,
+      "steady_state": 0.0545195105356633
+    },
+    "FC_enterocyte": {
+      "index": 5,
+      "steady_state": 75.72093398454243
+    },
+    "CE_enterocyte": {
+      "index": 6,
+      "steady_state": 841.2418710287296
+    },
+    "Chylomicron": {
+      "index": 7,
+      "steady_state": 6.336320743561157
+    },
+    "Chylomicron_remnant": {
+      "index": 8,
+      "steady_state": 5.430722394864126
+    },
+    "VLDL": {
+      "index": 9,
+      "steady_state": -1.4016605157473093e-09
+    },
+    "IDL": {
+      "index": 10,
+      "steady_state": -2.1597911029601724e-10
+    },
+    "LDL": {
+      "index": 11,
+      "steady_state": -8.862937639073504e-11
+    },
+    "HDL": {
+      "index": 12,
+      "steady_state": 2235.6434211571536
+    },
+    "TAG_adipose": {
+      "index": 13,
+      "steady_state": 0.2735503530407492
+    },
+    "TAG_liver": {
+      "index": 14,
+      "steady_state": -9.352223668393847e-10
+    },
+    "G3P": {
+      "index": 15,
+      "steady_state": -6.273967890010399e-12
+    },
+    "Glycerol": {
+      "index": 16,
+      "steady_state": -2.943894946363693e-10
+    },
+    "Acyl_CoA": {
+      "index": 17,
+      "steady_state": 0.1529625645238436
+    },
+    "Acetyl_CoA": {
+      "index": 18,
+      "steady_state": 0.08753341388259553
+    },
+    "Ketone": {
+      "index": 19,
+      "steady_state": 0.2248393602233809
+    },
+    "Glucose": {
+      "index": 20,
+      "steady_state": 1502.9999999999995
+    },
+    "DNL_FA": {
+      "index": 21,
+      "steady_state": 0.1
+    },
+    "Bile_Chol": {
+      "index": 22,
+      "steady_state": 0.1
+    },
+    "Primary_Bile_Acid": {
+      "index": 23,
+      "steady_state": 2.3606982977920534
+    },
+    "Conjugated_Bile_Acid": {
+      "index": 24,
+      "steady_state": 9.35421325361886
+    },
+    "Bile": {
+      "index": 25,
+      "steady_state": 18.359730506094827
+    },
+    "Indirect_Bilirubin": {
+      "index": 26,
+      "steady_state": 0.04000000000000001
+    },
+    "Direct_Bilirubin": {
+      "index": 27,
+      "steady_state": 0.049999999999999996
+    }
+  },
+  "reactions": {
+    "Emulsification": {
+      "stoich": {
+        "Dietary_TAG_gut": -1.0,
+        "Emulsified_TAG": 1.0
+      },
+      "kf": 0.5,
+      "kr": 0.0,
+      "comment": "bile salts emulsify dietary TAG in gut lumen"
+    },
+    "Pancreatic_lipase": {
+      "stoich": {
+        "Emulsified_TAG": -1.0,
+        "2MAG": 1.0,
+        "FFA_gut": 1.0
+      },
+      "kf": 0.6,
+      "kr": 0.1,
+      "comment": "lipase hydrolyzes TAG to 2-MAG + FFA; partial reversibility (re-esterification in lumen negligible but we permit small kr)"
+    },
+    "FFA_uptake": {
+      "stoich": {
+        "FFA_gut": -1.0,
+        "FFA_enterocyte": 1.0
+      },
+      "kf": 0.8,
+      "kr": 0.0,
+      "comment": "enterocyte uptake via CD36/FATP"
+    },
+    "ACAT_esterification_enterocyte": {
+      "stoich": {
+        "FC_enterocyte": -1.0,
+        "CE_enterocyte": 1.0
+      },
+      "kf": 0.4,
+      "kr": 0.05,
+      "comment": "ACAT in enterocyte esterifies free cholesterol to CE"
+    },
+    "Re-esterification_enterocyte": {
+      "stoich": {
+        "2MAG": -1.0,
+        "FFA_enterocyte": -1.0,
+        "Chylomicron": 1.0
+      },
+      "kf": 0.45,
+      "kr": 0.0,
+      "comment": "reformation of TAG and packaging into chylomicron (lumped)"
+    },
+    "Chylomicron_LPL": {
+      "stoich": {
+        "2MAG": 0.5,
+        "FFA_enterocyte": 0.5,
+        "Chylomicron": -1.0,
+        "Chylomicron_remnant": 1.0
+      },
+      "kf": 0.3,
+      "kr": 0.0,
+      "comment": "LPL hydrolyzes chylomicron TAG, producing FFA and remnants"
+    },
+    "AcylCoA_synthesis": {
+      "stoich": {
+        "FFA_enterocyte": -1.0,
+        "Acyl_CoA": 1.0
+      },
+      "kf": 0.7,
+      "kr": 0.0,
+      "comment": "ACS activates fatty acids to acyl-CoA"
+    },
+    "Beta_oxidation": {
+      "stoich": {
+        "Acyl_CoA": -1.0,
+        "Acetyl_CoA": 1.0
+      },
+      "kf": 0.2,
+      "kr": 0.0,
+      "comment": "\u03b2-oxidation yields acetyl-CoA"
+    },
+    "Ketogenesis": {
+      "stoich": {
+        "Acetyl_CoA": -1.0,
+        "Ketone": 1.0
+      },
+      "kf": 0.05,
+      "kr": 0.0,
+      "comment": "minor flux under fed conditions"
+    },
+    "TCA_consumption": {
+      "stoich": {
+        "Acetyl_CoA": -1.0
+      },
+      "kf": 0.3,
+      "kr": 0.0,
+      "comment": "acetyl-CoA enters TCA and is consumed"
+    },
+    "TAG_synthesis_liver": {
+      "stoich": {
+        "TAG_liver": 1.0,
+        "G3P": -1.0,
+        "Acyl_CoA": -1.0
+      },
+      "kf": 0.4,
+      "kr": 0.0,
+      "comment": "glycerol-3-phosphate pathway in liver"
+    },
+    "TAG_synthesis_adipose": {
+      "stoich": {
+        "TAG_adipose": 1.0,
+        "G3P": -1.0,
+        "Acyl_CoA": -1.0
+      },
+      "kf": 0.35,
+      "kr": 0.0,
+      "comment": "TAG storage in adipose"
+    },
+    "TAG_hydrolysis": {
+      "stoich": {
+        "TAG_adipose": -0.6,
+        "TAG_liver": -0.4,
+        "Glycerol": 1.0,
+        "Acyl_CoA": 1.0
+      },
+      "kf": 0.25,
+      "kr": 0.0,
+      "comment": "lipolysis by HSL and others (lumped)"
+    },
+    "Glycerol_kinase": {
+      "stoich": {
+        "G3P": 1.0,
+        "Glycerol": -1.0
+      },
+      "kf": 0.6,
+      "kr": 0.0,
+      "comment": "glycerol kinase regenerates G3P"
+    },
+    "VLDL_assembly": {
+      "stoich": {
+        "CE_enterocyte": -0.5,
+        "VLDL": 1.0,
+        "TAG_liver": -1.0
+      },
+      "kf": 0.3,
+      "kr": 0.0,
+      "comment": "ApoB100 + MTP assemble VLDL (lumped)"
+    },
+    "VLDL_LPL": {
+      "stoich": {
+        "VLDL": -1.0,
+        "IDL": 1.0,
+        "Glycerol": 0.5,
+        "Acyl_CoA": 0.5
+      },
+      "kf": 0.25,
+      "kr": 0.0,
+      "comment": "LPL acts on VLDL"
+    },
+    "IDL_to_LDL": {
+      "stoich": {
+        "IDL": -1.0,
+        "LDL": 1.0
+      },
+      "kf": 0.2,
+      "kr": 0.0,
+      "comment": "HL converts IDL to LDL"
+    },
+    "LDL_uptake": {
+      "stoich": {
+        "FC_enterocyte": 1.0,
+        "LDL": -1.0
+      },
+      "kf": 0.4,
+      "kr": 0.0,
+      "comment": "LDLR-mediated uptake yields free cholesterol"
+    },
+    "HDL_formation": {
+      "stoich": {
+        "FC_enterocyte": -1.0,
+        "HDL": 1.0
+      },
+      "kf": 0.15,
+      "kr": 0.0,
+      "comment": "ABCA1/ABCG1-mediated nascent HDL formation"
+    },
+    "LCAT_on_HDL": {
+      "stoich": {
+        "CE_enterocyte": 0.2
+      },
+      "kf": 0.05,
+      "kr": 0.0,
+      "comment": "LCAT esterifies cholesterol on HDL; lumped contribution to CE pool"
+    },
+    "CETP_exchange": {
+      "stoich": {
+        "CE_enterocyte": 0.2,
+        "HDL": -0.1
+      },
+      "kf": 0.03,
+      "kr": 0.0,
+      "comment": "CETP-mediated lipid exchange (very simplified)"
+    },
+    "Chylomicron_remnant_clearance": {
+      "stoich": {
+        "FC_enterocyte": 0.8,
+        "Chylomicron_remnant": -1.0
+      },
+      "kf": 0.35,
+      "kr": 0.0,
+      "comment": "hepatic uptake of remnant supplies cholesterol"
+    },
+    "Bile_acid_synthesis": {
+      "stoich": {
+        "FC_enterocyte": -0.5,
+        "Primary_Bile_Acid": 0.5
+      },
+      "kf": 0.05,
+      "kr": 0.0,
+      "comment": "CYP7A1 pathway (lumped)"
+    },
+    "Bile_acid_conjugation": {
+      "stoich": {
+        "Primary_Bile_Acid": -1.0,
+        "Conjugated_Bile_Acid": 1.0
+      },
+      "kf": 0.8,
+      "kr": 0.0,
+      "comment": "taurine/glycine conjugation"
+    },
+    "Bile_excretion": {
+      "stoich": {
+        "Conjugated_Bile_Acid": -1.0,
+        "Bile": 1.0
+      },
+      "kf": 0.2,
+      "kr": 0.0,
+      "comment": "exported into bile"
+    },
+    "Heme_catabolism": {
+      "stoich": {
+        "Indirect_Bilirubin": 1.0
+      },
+      "kf": 0.02,
+      "kr": 0.0,
+      "comment": "RBC turnover provides bilirubin precursor"
+    },
+    "Bilirubin_conjugation": {
+      "stoich": {
+        "Indirect_Bilirubin": -1.0,
+        "Direct_Bilirubin": 1.0
+      },
+      "kf": 0.5,
+      "kr": 0.0,
+      "comment": "UGT1A1 conjugates bilirubin"
+    },
+    "Bilirubin_excretion": {
+      "stoich": {
+        "Direct_Bilirubin": -1.0
+      },
+      "kf": 0.4,
+      "kr": 0.0,
+      "comment": "biliary excretion of conjugated bilirubin"
+    }
+  },
+  "reaction_fluxes_per_minute": [
+    {
+      "reaction": "Emulsification",
+      "v_ss": 1.0,
+      "contrib": {
+        "Dietary_TAG_gut": -1.0,
+        "Emulsified_TAG": 1.0
+      }
+    },
+    {
+      "reaction": "Pancreatic_lipase",
+      "v_ss": 0.9914823190052715,
+      "contrib": {
+        "Emulsified_TAG": -0.9914823190052715,
+        "2MAG": 0.9914823190052715,
+        "FFA_gut": 0.9914823190052715
+      }
+    },
+    {
+      "reaction": "FFA_uptake",
+      "v_ss": 0.9914769734173545,
+      "contrib": {
+        "FFA_gut": -0.9914769734173545,
+        "FFA_enterocyte": 0.9914769734173545
+      }
+    },
+    {
+      "reaction": "ACAT_esterification_enterocyte",
+      "v_ss": -11.773719957619512,
+      "contrib": {
+        "FC_enterocyte": 11.773719957619512,
+        "CE_enterocyte": -11.773719957619512
+      }
+    },
+    {
+      "reaction": "Re-esterification_enterocyte",
+      "v_ss": 1.9010627769297408,
+      "contrib": {
+        "2MAG": -1.9010627769297408,
+        "FFA_enterocyte": -1.9010627769297408,
+        "Chylomicron": 1.9010627769297408
+      }
+    },
+    {
+      "reaction": "Chylomicron_LPL",
+      "v_ss": 1.900896223068347,
+      "contrib": {
+        "2MAG": 0.9504481115341735,
+        "FFA_enterocyte": 0.9504481115341735,
+        "Chylomicron": -1.900896223068347,
+        "Chylomicron_remnant": 1.900896223068347
+      }
+    },
+    {
+      "reaction": "AcylCoA_synthesis",
+      "v_ss": 0.038163657374964306,
+      "contrib": {
+        "FFA_enterocyte": -0.038163657374964306,
+        "Acyl_CoA": 0.038163657374964306
+      }
+    },
+    {
+      "reaction": "Beta_oxidation",
+      "v_ss": 0.03059251290476872,
+      "contrib": {
+        "Acyl_CoA": -0.03059251290476872,
+        "Acetyl_CoA": 0.03059251290476872
+      }
+    },
+    {
+      "reaction": "Ketogenesis",
+      "v_ss": 0.004376670694129776,
+      "contrib": {
+        "Acetyl_CoA": -0.004376670694129776,
+        "Ketone": 0.004376670694129776
+      }
+    },
+    {
+      "reaction": "TCA_consumption",
+      "v_ss": 0.02626002416477866,
+      "contrib": {
+        "Acetyl_CoA": -0.02626002416477866
+      }
+    },
+    {
+      "reaction": "TAG_synthesis_liver",
+      "v_ss": 0.0,
+      "contrib": {
+        "TAG_liver": 0.0,
+        "G3P": -0.0,
+        "Acyl_CoA": -0.0
+      }
+    },
+    {
+      "reaction": "TAG_synthesis_adipose",
+      "v_ss": 0.0,
+      "contrib": {
+        "TAG_adipose": 0.0,
+        "G3P": -0.0,
+        "Acyl_CoA": -0.0
+      }
+    },
+    {
+      "reaction": "TAG_hydrolysis",
+      "v_ss": 0.0,
+      "contrib": {
+        "TAG_adipose": -0.0,
+        "TAG_liver": -0.0,
+        "Glycerol": 0.0,
+        "Acyl_CoA": 0.0
+      }
+    },
+    {
+      "reaction": "Glycerol_kinase",
+      "v_ss": 0.0,
+      "contrib": {
+        "G3P": 0.0,
+        "Glycerol": -0.0
+      }
+    },
+    {
+      "reaction": "VLDL_assembly",
+      "v_ss": 0.0,
+      "contrib": {
+        "CE_enterocyte": -0.0,
+        "VLDL": 0.0,
+        "TAG_liver": -0.0
+      }
+    },
+    {
+      "reaction": "VLDL_LPL",
+      "v_ss": 0.0,
+      "contrib": {
+        "VLDL": -0.0,
+        "IDL": 0.0,
+        "Glycerol": 0.0,
+        "Acyl_CoA": 0.0
+      }
+    },
+    {
+      "reaction": "IDL_to_LDL",
+      "v_ss": 0.0,
+      "contrib": {
+        "IDL": -0.0,
+        "LDL": 0.0
+      }
+    },
+    {
+      "reaction": "LDL_uptake",
+      "v_ss": 0.0,
+      "contrib": {
+        "FC_enterocyte": 0.0,
+        "LDL": -0.0
+      }
+    },
+    {
+      "reaction": "HDL_formation",
+      "v_ss": 11.358140097681364,
+      "contrib": {
+        "FC_enterocyte": -11.358140097681364,
+        "HDL": 11.358140097681364
+      }
+    },
+    {
+      "reaction": "LCAT_on_HDL",
+      "v_ss": 0.05,
+      "contrib": {
+        "CE_enterocyte": 0.010000000000000002
+      }
+    },
+    {
+      "reaction": "CETP_exchange",
+      "v_ss": 67.0693026347146,
+      "contrib": {
+        "CE_enterocyte": 13.413860526942921,
+        "HDL": -6.7069302634714605
+      }
+    },
+    {
+      "reaction": "Chylomicron_remnant_clearance",
+      "v_ss": 1.900752838202444,
+      "contrib": {
+        "FC_enterocyte": 1.5206022705619553,
+        "Chylomicron_remnant": -1.900752838202444
+      }
+    },
+    {
+      "reaction": "Bile_acid_synthesis",
+      "v_ss": 3.7860466992271213,
+      "contrib": {
+        "FC_enterocyte": -1.8930233496135607,
+        "Primary_Bile_Acid": 1.8930233496135607
+      }
+    },
+    {
+      "reaction": "Bile_acid_conjugation",
+      "v_ss": 1.8885586382336428,
+      "contrib": {
+        "Primary_Bile_Acid": -1.8885586382336428,
+        "Conjugated_Bile_Acid": 1.8885586382336428
+      }
+    },
+    {
+      "reaction": "Bile_excretion",
+      "v_ss": 1.8708426507237723,
+      "contrib": {
+        "Conjugated_Bile_Acid": -1.8708426507237723,
+        "Bile": 1.8708426507237723
+      }
+    },
+    {
+      "reaction": "Heme_catabolism",
+      "v_ss": 0.02,
+      "contrib": {
+        "Indirect_Bilirubin": 0.02
+      }
+    },
+    {
+      "reaction": "Bilirubin_conjugation",
+      "v_ss": 0.020000000000000004,
+      "contrib": {
+        "Indirect_Bilirubin": -0.020000000000000004,
+        "Direct_Bilirubin": 0.020000000000000004
+      }
+    },
+    {
+      "reaction": "Bilirubin_excretion",
+      "v_ss": 0.02,
+      "contrib": {
+        "Direct_Bilirubin": -0.02
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+name: oxphos
+capacity: 0.6
+
+substrates:
+  NADH: 3
+  FADH2: 1
+  O2: 1
+  ADP: 3
+
+products:
+  NAD+: 3
+  FAD: 1
+  ATP: 3
+  H2O: 2

@@ -1,0 +1,15 @@
+name: tca_cycle
+capacity: 0.4
+
+substrates:
+  Acetyl-CoA: 1
+  NAD+: 3
+  FAD: 1
+  ADP: 1
+
+products:
+  CoA: 1
+  CO2: 2
+  NADH: 3
+  FADH2: 1
+  ATP: 1

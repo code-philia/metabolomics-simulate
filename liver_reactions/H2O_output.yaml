@@ -1,0 +1,7 @@
+name: H2O_output
+capacity: 0.01
+
+substrates:
+  H2O: 1
+
+products: {}

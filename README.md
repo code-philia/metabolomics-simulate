@@ -4,7 +4,7 @@ This project simulates simplified metabolic networks using modular, human-readab
 
 ---
 
-## 🚀 Features
+## 🚀 Building...
 - Modular reaction definitions (`.yaml`)
 - Metabolite pool initialization (`.yaml`)
 - Time-step simulation with concentration tracking
@@ -12,7 +12,10 @@ This project simulates simplified metabolic networks using modular, human-readab
 
 ---
 
-## 🧬 Example Run
+## 🧬 Example Run on manual test
 
 ```bash
-python simulation.py
+cd simulate/manual_test/liver-bigger
+python test.py
+
+

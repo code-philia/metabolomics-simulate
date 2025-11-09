@@ -21,8 +21,10 @@ class MetabolicSimulation:
 
         self._ensure_pool_consistency()
 
-        # Simulation history
+        # 历史记录：代谢物浓度随时间变化
         self.history = {k: [v] for k, v in self.pool.items()}
+        # 反应速率随时间变化
+        self.rate_history = {r.name: [] for r in self.reactions}
         self.time = [0]
 
     def simulate_step(self, dt=1.0):
@@ -31,9 +33,9 @@ class MetabolicSimulation:
         If auto_adjust=True, reaction capacities are gradually tuned to minimize concentration drift.
         """
         delta = {k: 0 for k in self.pool}
-        concentration_change = {}
 
         for r in self.reactions:
+            # 计算当前反应速率
             if not r.substrates:
                 rate = r.capacity  # input-only reactions
             else:
@@ -46,30 +48,30 @@ class MetabolicSimulation:
                     rates.append(rate)
                 rate = min(min(rates), r.capacity)
 
-            # Apply concentration changes
+            # 应用反应变化
             if rate > 0:
                 for s, amt in r.substrates.items():
                     delta[s] -= amt * rate * dt
                 for p, amt in r.products.items():
                     delta[p] = delta.get(p, 0) + amt * rate * dt
 
-            # Optional: record reaction rate change
-            concentration_change[r.name] = rate
+            # 记录速率变化历史
+            self.rate_history[r.name].append(rate)
 
-        # Update metabolite pool
+        # 更新代谢池
         for k in self.pool:
             self.pool[k] = max(self.pool[k] + delta[k], 0.0)
 
-        # ✅ Ensure new metabolites are tracked
+        # 确保代谢物存在
         for k, v in delta.items():
             if k not in self.pool:
                 self.pool[k] = 0.0
                 self.history[k] = [0.0]
             self.pool[k] = max(self.pool[k] + v, 0.0)
 
-        # Auto-adjust reaction capacity if requested
+        # 可选：自动调节速率
         if self.auto_adjust:
-            self._adjust_reaction_rates(concentration_change)
+            self._adjust_reaction_rates()
 
     def _ensure_pool_consistency(self):
         """
@@ -82,19 +84,23 @@ class MetabolicSimulation:
                     print(f"[Warning] Metabolite '{m}' not in pool.json — initialized to 0.0")
                     self.pool[m] = 0.0
 
-    def _adjust_reaction_rates(self, concentration_change):
+    def _adjust_reaction_rates(self):
         """
-        Adjust reaction capacities gradually to stabilize the system.
-        If a metabolite accumulates → slow down producing reactions, speed up consuming reactions.
+        Adjust reaction capacities based on recent rate trends.
+        If a reaction rate keeps increasing -> downregulate (possible accumulation)
+        If a reaction rate keeps decreasing -> upregulate (possible depletion)
         """
         for r in self.reactions:
-            for p in r.products:
-                if self.pool[p] > np.mean(self.history[p]) * 1.2:  # accumulation
-                    r.capacity *= 0.98
-            for s in r.substrates:
-                if self.pool[s] < np.mean(self.history[s]) * 0.8:  # depletion
-                    r.capacity *= 1.02
+            recent_rates = self.rate_history[r.name][-5:]  # 最近5步
+            if len(recent_rates) >= 2:
+                # 计算速率变化趋势
+                trend = np.mean(np.diff(recent_rates))
+                if trend > 0.01:
+                    r.capacity *= 0.98  # 速率在上升 → 轻微抑制
+                elif trend < -0.01:
+                    r.capacity *= 1.02  # 速率在下降 → 轻微促进
 
+            # 防止 capacity 过低
             r.capacity = max(r.capacity, 1e-3)
 
     def run(self, steps=200, dt=1.0):
@@ -105,7 +111,25 @@ class MetabolicSimulation:
                 self.history[k].append(self.pool[k])
             self.time.append(t + 1)
 
-    def plot(self, save_fig_path, keys=None):
+    def plot_rates(self, save_fig_path=None, keys=None):
+        # 反应速率可视化
+        """Plot the rate evolution of each reaction."""
+        if keys is None:
+            keys = list(self.rate_history.keys())
+
+        plt.figure(figsize=(8, 5))
+        for k in keys:
+            plt.plot(self.time[:-1], self.rate_history[k], label=k)
+        plt.legend()
+        plt.xlabel("Time")
+        plt.ylabel("Reaction rate")
+        plt.title("Reaction Rate Evolution")
+        plt.tight_layout()
+        if save_fig_path:
+            plt.savefig(save_fig_path)
+        plt.show()
+
+    def plot(self, save_fig_path=None, keys=None):
         """Plot concentration changes over time."""
         if keys is None:
             keys = list(self.pool.keys())
@@ -117,15 +141,18 @@ class MetabolicSimulation:
         plt.xlabel("Time")
         plt.ylabel("Concentration")
         plt.title("Metabolic Simulation" + (" (auto-adjusted)" if self.auto_adjust else ""))
+        if save_fig_path:
+            plt.savefig(save_fig_path)
         plt.show()
-        plt.savefig(save_fig_path)
 
 
 if __name__ == "__main__":
+    suffix = ""
     sim = MetabolicSimulation(
-        reaction_folder="reactions",
-        pool_file="ini_pool.yaml",
+        reaction_folder=f"{suffix}reactions",
+        pool_file=f"ini_pools/{suffix}ini_pool.yaml",
         auto_adjust=True
     )
-    sim.run(steps=300)
-    sim.plot(save_fig_path='outputs/changes.png',keys=["ATP", "ADP", "NADH", "NAD+", "FADH2", "FAD"])
+    sim.run(steps=500)
+    sim.plot(save_fig_path=f'outputs/{suffix}changes.png',keys=["ATP", "ADP", "NADH", "NAD+", "FADH2", "FAD"])
+    sim.plot_rates(save_fig_path=f'outputs/{suffix}rates.png')

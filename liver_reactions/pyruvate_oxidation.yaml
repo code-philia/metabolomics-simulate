@@ -1,0 +1,12 @@
+name: pyruvate_oxidation
+capacity: 0.4
+
+substrates:
+  Pyruvate: 1
+  CoA: 1
+  NAD+: 1
+
+products:
+  Acetyl-CoA: 1
+  CO2: 1
+  NADH: 1

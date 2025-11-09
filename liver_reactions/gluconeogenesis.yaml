@@ -1,0 +1,12 @@
+name: gluconeogenesis
+capacity: 0.2
+
+substrates:
+  Pyruvate: 2
+  ATP: 2
+  NADH: 2
+
+products:
+  Glc: 1
+  ADP: 2
+  NAD+: 2
