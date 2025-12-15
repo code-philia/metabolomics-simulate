@@ -44,7 +44,7 @@ class MetabolicNetwork:
     def simulate(self, y0: Dict[str, float], t_max=200.0, dt=0.1):
         steps = int(t_max / dt) + 1
         times = np.linspace(0, t_max, steps)
-        conc = {m: float(y0.get(m, 0.0)) for m in self.metabolites}
+        conc = {m: float(y0.get(m, 0.0)) for m in self.metabolites} # 当前时刻浓度字典
         history = np.zeros((len(times), len(self.metabolites)))
         for i, t in enumerate(times):
             history[i, :] = [conc[m] for m in self.metabolites]
