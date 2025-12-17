@@ -1,0 +1,118 @@
+{
+  "EnvironmentModule": {
+    "MaterialResources": [
+      "ATP/ADP/AMP",
+      "NADH/NADPH/FADH2",
+      "O2",
+      "Water & Electrolytes",
+      "Amino Acids, Glucose, Fatty Acids (Stock)"
+    ],
+    "Parameters": [
+      "pH Value",
+      "Temperature",
+      "Blood Flow/Pressure",
+      "Oxygen Partial Pressure",
+      "Hormone & Metabolite Concentrations (e.g., Blood Glucose, Ammonia, Insulin, Glucagon)"
+    ]
+  },
+  "FunctionalUnits": [
+    {
+      "UnitName": "1) Nutrient Metabolism",
+      "Input": [
+        "Glucose",
+        "Fatty Acids",
+        "Glycerol",
+        "Amino Acids",
+        "Lactate",
+        "Ketone Bodies"
+      ],
+      "ControlLogic": [
+        "([Glucose]blood > Threshold_high): Trigger Glycogenesis & Lipogenesis",
+        "([Glucose]blood < Threshold_low): Trigger Glycogenolysis, beta-Oxidation, Gluconeogenesis",
+        "ATP/AMP Ratio: High -> Synthesis/Storage; Low -> Energy Generation",
+        "[Insulin]/[Glucagon] Ratio: High -> Anabolism; Low -> Catabolism"
+      ],
+      "Output": [
+        "Glucose (to blood)",
+        "Ketone Bodies",
+        "VLDL (Fat transport)",
+        "Albumin (Carrier)",
+        "Hepatic Glycogen (Internal Storage)"
+      ]
+    },
+    {
+      "UnitName": "2) Detoxification",
+      "Input": [
+        "Xenobiotics (Drugs, Alcohol, Toxins)",
+        "Endogenous Toxic Products (Bilirubin, Steroid Metabolites)"
+      ],
+      "ControlLogic": [
+        "([Toxin]in > 0): Activate Cytochrome P450 (Phase I Oxidation/Reduction)",
+        "Phase I Product Polarity Insufficient: Trigger Phase II Conjugation (Glucuronidation, Sulfation, etc.)",
+        "Biliary Pathway Patent: Trigger Excretion via Bile"
+      ],
+      "Output": [
+        "Water-soluble, Non-toxic Metabolites (via Blood or Bile)"
+      ]
+    },
+    {
+      "UnitName": "3) Secretion and Synthesis",
+      "Input": [
+        "Amino Acids",
+        "Fatty Acids",
+        "Cholesterol",
+        "Water & Electrolytes"
+      ],
+      "ControlLogic": [
+        "Osmotic Pressure/Plasma Protein Level Low: Trigger Albumin Synthesis",
+        "Coagulation Cascade Activated: Trigger Clotting Factor Synthesis (Prothrombin, VII, IX, X)",
+        "Cholesterol Surplus: Trigger Bile Acid and Bile Salt Synthesis",
+        "Specific Hormone Signals (e.g., Estrogen): Trigger Carrier Protein Synthesis"
+      ],
+      "Output": [
+        "Plasma Proteins (Albumin, Globulins)",
+        "Clotting Factors",
+        "Bile (Bile Salts, Cholesterol, Bilirubin)"
+      ]
+    },
+    {
+      "UnitName": "4) Nitrogen Processing and Urea Cycle",
+      "Input": [
+        "Ammonia (from Amino Acid Degradation, Gut Bacteria)",
+        "Amino Acid Carbon Skeletons"
+      ],
+      "ControlLogic": [
+        "([Ammonia]blood > Threshold_toxic): Activate Urea Cycle to form non-toxic Urea",
+        "ATP Supply Adequate: Urea Cycle is ATP-dependent",
+        "Amino Acid Catabolism Active: Provide NH3 and Aspartate"
+      ],
+      "Output": [
+        "Urea (to Kidney for excretion)",
+        "Glucose (from Gluconeogenesis)",
+        "Ketone Bodies or Fatty Acids"
+      ]
+    },
+    {
+      "UnitName": "5) Hormone-Neuro-Immune Signaling Regulation",
+      "Input": [
+        "Insulin",
+        "Glucagon",
+        "Epinephrine",
+        "Thyroid Hormone",
+        "Cortisol",
+        "Cytokines (e.g., IL-6)",
+        "Nerve Signals (e.g., Vagus Nerve)"
+      ],
+      "ControlLogic": [
+        "Endocrine Receptor Activation: Regulate downstream metabolic pathways",
+        "Inflammatory Signal Activation (Cytokine Increase): Trigger Acute Phase Protein Synthesis (CRP, SAA)",
+        "Nerve Signal (e.g., Sympathetic Excitation): Trigger Short-term Glycogenolysis"
+      ],
+      "Output": [
+        "Cytokine Receptor Signal Transduction Products (Internal effect)",
+        "Acute Phase Proteins (Secreted to Blood)",
+        "Hormone-Binding Proteins"
+      ]
+    }
+  ]
+}
