@@ -68,14 +68,33 @@ children:
               在能量充足状态下，将葡萄糖转化为糖原进行储存。
             feature_description:
               inputs:
-                metabolites: [葡萄糖, ATP]
-                signals: [胰岛素]
+                metabolites:
+                  - 葡萄糖
+                  - 葡萄糖-6-磷酸
+                  - UDP-葡糖 (UDP-glucose)
+                  - ATP
+                  - 无机磷 (Pi)
+                signals:
+                  - 胰岛素
+                cofactors:
+                  - Glycogen synthase 活性 (去/加磷酸化状态)
+              compartment: [细胞质]
               outputs:
-                metabolites: [糖原, ADP]
+                metabolites:
+                  - 糖原 (肝/肌糖原)
+                  - UDP
+                  - ADP
+                notes: 葡萄糖以 UDP-葡糖 形式加入糖原链，产物回写至环境模块
             control_conditions:
-              - 胰岛素水平升高
-              - 细胞ATP充足
-              - 血糖浓度升高
+              - condition: 胰岛素水平升高
+                mechanism: 通过胰岛素受体-PI3K/Akt 信号通路促进葡萄糖转运和去磷酸化，激活糖原合成酶，抑制糖原磷酸化酶
+                required_context: [胰岛素/胰高血糖素 比值升高, 有可利用葡萄糖]
+              - condition: 细胞ATP充足
+                mechanism: 提供合成所需能量；高ATP/AMP 比值抑制AMPK，间接抑制糖原分解
+                required_context: [线粒体功能正常]
+              - condition: 血糖浓度升高
+                mechanism: 增加细胞葡萄糖摄取并形成葡萄糖-6-磷酸，作为糖原合成底物
+                required_context: [葡萄糖输送通道开放]
 
           - id: REQ-1-1-2
             name: 糖原分解
@@ -83,14 +102,34 @@ children:
               在血糖降低或能量需求增加时分解糖原生成葡萄糖。
             feature_description:
               inputs:
-                metabolites: [糖原]
-                signals: [胰高血糖素, 肾上腺素]
+                metabolites:
+                  - 糖原
+                  - Pi
+                signals:
+                  - 胰高血糖素
+                  - 肾上腺素
+                cofactors:
+                  - 吡哆醛磷酸 (PLP) (糖原磷酸化酶活性依赖)
+              tools:
+                - 糖原磷酸化酶
+                - 去支链酶
+              compartment: [细胞质, 肝胞]
               outputs:
-                metabolites: [葡萄糖]
+                metabolites:
+                  - 葡萄糖-1-磷酸
+                  - 葡萄糖 (肝脏可释放至血浆)
+                  - 无机磷 (Pi)
+              notes: 部分产物经转化后参与糖酵解或释放入血
             control_conditions:
-              - 胰高血糖素升高
-              - 应激状态
-              - 血糖降低
+              - condition: 胰高血糖素升高
+                mechanism: 激活腺苷酸环化酶(cAMP)-PKA 通路，磷酸化并激活糖原分解酶，抑制糖原合成酶
+                required_context: [低胰岛素信号或高胰高血糖素/胰岛素 比值]
+              - condition: 应激状态
+                mechanism: 肾上腺素/儿茶酚胺通过β受体提升cAMP，增强糖原分解以快速提供葡萄糖
+                required_context: [交感神经活性增加]
+              - condition: 血糖降低
+                mechanism: 细胞外血糖下降触发胰高血糖素分泌并调动肝糖原分解以维持血糖
+                required_context: [肝脏糖原储备可用]
 
           - id: REQ-1-1-3
             name: 糖异生
@@ -98,14 +137,37 @@ children:
               以非糖前体合成葡萄糖，用于长期禁食或高能耗状态。
             feature_description:
               inputs:
-                metabolites: [乳酸, 甘油, 生糖氨基酸, ATP]
-                signals: [胰高血糖素, 皮质醇]
+                metabolites:
+                  - 乳酸
+                  - 甘油
+                  - 生糖氨基酸（丙氨酸、谷氨酰胺等）
+                  - ATP
+                  - GTP
+                  - NADH (在需要时)
+                signals:
+                  - 胰高血糖素
+                  - 皮质醇
+                enzymes:
+                  - PEPCK
+                  - G6Pase
+              compartment: [细胞质, 线粒体]
               outputs:
-                metabolites: [葡萄糖, ADP]
+                metabolites:
+                  - 葡萄糖
+                  - ADP
+                  - GDP
+                  - NAD+
+              notes: 产物可被肝脏释放至血浆以维持血糖
             control_conditions:
-              - 长时间禁食
-              - 胰岛素水平低
-              - ATP供应充足
+              - condition: 长时间禁食
+                mechanism: 促进肝脏脂肪分解与甘油/氨基酸供给，加速糖异生通路（PEPCK、G6Pase 上调）
+                required_context: [肝脏有可用的非糖前体：乳酸、甘油、生糖氨基酸]
+              - condition: 胰岛素水平低
+                mechanism: 低胰岛素解除对糖异生关键酶的抑制，胰高血糖素/皮质醇协同激活
+                required_context: [胰高血糖素或皮质醇信号存在]
+              - condition: ATP供应充足
+                mechanism: 糖异生为耗能过程，需要ATP提供能量以驱动逆转代谢步骤
+                required_context: [线粒体/细胞能量状态允许]
 
       # -------- 脂代谢 --------
       - id: REQ-1-2
@@ -120,13 +182,30 @@ children:
               在能量和碳源充足时合成脂肪酸用于储能。
             feature_description:
               inputs:
-                metabolites: [乙酰辅酶A, NADPH, ATP]
-                signals: [胰岛素]
+                metabolites:
+                  - 乙酰辅酶A
+                  - Malonyl-CoA / 丙二酰-ACP
+                  - NADPH
+                  - ATP
+                signals:
+                  - 胰岛素
+                enzymes:
+                  - ACC (乙酰辅酶A羧化酶)
+                  - 脂肪酸合成酶 (FAS)
+              compartment: [细胞质]
               outputs:
-                metabolites: [脂肪酸, ADP, NADP+]
+                metabolites:
+                  - 长链饱和脂肪酸（如棕榈酸）
+                  - CoA
+                  - NADP+
+              notes: 合成产物可被酯化并转运/储存
             control_conditions:
-              - 高碳水摄入
-              - 胰岛素升高
+              - condition: 高碳水摄入
+                mechanism: 提供过剩碳源使乙酰辅酶A和柠檬酸增加，推动脂肪酸合成
+                required_context: [糖酵解/丙酮酸代谢通畅]
+              - condition: 胰岛素升高
+                mechanism: 通过胰岛素信号上调ACC和脂肪酸合成酶的表达/活性，促进NADPH 供给
+                required_context: [NADPH 来源（如戊糖磷酸途径）正常]
 
           - id: REQ-1-2-2
             name: 脂肪酸分解（β-氧化）
@@ -134,13 +213,28 @@ children:
               将脂肪酸分解以生成能量。
             feature_description:
               inputs:
-                metabolites: [脂肪酸, NAD+, FAD]
-                signals: [胰高血糖素]
+                metabolites:
+                  - 活化的长链脂酰-CoA
+                  - 肉毒碱系统(用于跨膜运输)
+                  - NAD+
+                  - FAD
+                signals:
+                  - 胰高血糖素
+                  - 低ATP/高AMP 信号
+              compartment: [线粒体基质]
               outputs:
-                metabolites: [乙酰辅酶A, NADH, FADH2]
+                metabolites:
+                  - 乙酰辅酶A
+                  - NADH
+                  - FADH2
+                notes: 产生的还原当量供氧化磷酸化生成ATP
             control_conditions:
-              - 能量需求增加
-              - 胰岛素低
+              - condition: 能量需求增加
+                mechanism: 低ATP/高AMP 激活AMPK并促进脂肪酸动员和β-氧化以产生ATP
+                required_context: [脂肪酸可被动员并进入线粒体（肉毒碱系统正常）]
+              - condition: 胰岛素低
+                mechanism: 低胰岛素解除对激素敏感性脂肪酶和β-氧化的抑制，利于脂肪酸分解
+                required_context: [升高的胰高血糖素或肾上腺素信号]
 
           - id: REQ-1-2-3
             name: 脂类转运
@@ -148,12 +242,26 @@ children:
               通过脂蛋白在组织间转运脂类。
             feature_description:
               inputs:
-                metabolites: [脂肪酸, 甘油, 脂蛋白]
+                metabolites:
+                  - 甘油三酯 (乳糜微粒/VLDL)
+                  - 游离脂肪酸 (与白蛋白结合)
+                  - 甘油
+                proteins:
+                  - 载脂蛋白 (ApoB, ApoE 等)
+              compartment: [血浆, 细胞外间隙, 细胞内脂滴]
               outputs:
-                metabolites: [组织脂质储存]
+                metabolites:
+                  - 组织脂质储存 (甘油三酯, 胆固醇酯)
+                effects:
+                  - 脂类在组织间的分配与储存
+                notes: 转运依赖脂蛋白代谢和膜受体/脂肪酶活性
             control_conditions:
-              - 餐后状态
-              - 血脂水平变化
+              - condition: 餐后状态
+                mechanism: 餐后胰岛素促进脂肪酯化并通过乳糜微粒/ VLDL 介导组织间转运
+                required_context: [肠道吸收和脂蛋白合成正常]
+              - condition: 血脂水平变化
+                mechanism: 血浆游离脂肪酸或三酰甘油升高触发转运与储存/清除机制
+                required_context: [脂蛋白受体/脂酶功能正常]
 
       # -------- 氨基酸代谢 --------
       - id: REQ-1-3
@@ -168,12 +276,25 @@ children:
               分解氨基酸用于供能或转化。
             feature_description:
               inputs:
-                metabolites: [氨基酸]
+                metabolites:
+                  - 各类氨基酸
+                cofactors:
+                  - PLP (转氨酶依赖)
+                signals:
+                  - 高蛋白摄入信号
+              compartment: [肝/肌肉细胞]
               outputs:
-                metabolites: [氨, 碳骨架]
+                metabolites:
+                  - 游离氨 (NH3/NH4+)
+                  - α-酮酸(碳骨架)
+                notes: 氨进入谷氨酸/谷氨酰胺代谢或尿素循环
             control_conditions:
-              - 蛋白质摄入过量
-              - 能量不足
+              - condition: 蛋白质摄入过量
+                mechanism: 氨基酸过剩促使肝脏或组织将多余氨基酸分解并进入能量代谢或转氨反应
+                required_context: [胰岛素/营养信号支持蛋白质代谢]
+              - condition: 能量不足
+                mechanism: 能量短缺时优先将氨基酸分解为碳骨架用于糖异生或供能
+                required_context: [糖/脂类供应不能满足能量需求]
 
           - id: REQ-1-3-2
             name: 氨基酸合成与转运
@@ -181,11 +302,24 @@ children:
               合成非必需氨基酸并在组织间转运。
             feature_description:
               inputs:
-                metabolites: [碳骨架, 氨]
+                metabolites:
+                  - 碳骨架 (α-酮酸)
+                  - 氨/NH4+ 或 谷氨酰胺
+                energy:
+                  - ATP
+                cofactors:
+                  - NADPH (某些还原合成步骤)
+              compartment: [细胞质, 线粒体]
               outputs:
-                metabolites: [氨基酸]
+                metabolites:
+                  - 非必需氨基酸
+                  - 谷氨酰胺 (作为氮转运体)
+                effects:
+                  - 支持蛋白质合成与组织修复
             control_conditions:
-              - 生长或修复需求
+              - condition: 生长或修复需求
+                mechanism: 生长因子和胰岛素样信号上调氨基酸合成与蛋白质生物合成以支持细胞增殖/修复
+                required_context: [可用碳骨架与氨供给]
 
       # -------- 能量供应 --------
       - id: REQ-1-4
@@ -198,22 +332,52 @@ children:
             name: 有氧呼吸与ATP生成
             feature_description:
               inputs:
-                metabolites: [葡萄糖, 脂肪酸, 氧]
+                metabolites:
+                  - 葡萄糖
+                  - 游离脂肪酸 / 酰基-CoA
+                  - 氧 (O2)
+                energy_acceptors:
+                  - ADP, Pi
+                cofactors:
+                  - NADH, FADH2 (电子供体)
+              compartment: [线粒体基质/内膜]
               outputs:
-                metabolites: [ATP, CO2, H2O]
+                metabolites:
+                  - ATP
+                  - CO2
+                  - H2O
+                side_products:
+                  - 热量 (散失)
+              notes: 依赖电子传递链完整性与膜电位耦合效率
             control_conditions:
-              - 氧充足
+              - condition: 氧充足
+                mechanism: 充分氧气支持电子传递链进行氧化磷酸化，将NADH/FADH2 的还原当量用于ATP 合成
+                required_context: [线粒体功能正常, 充足的底物（葡萄糖/脂肪酸）]
 
           - id: REQ-1-4-2
             name: 酮体生成
             feature_description:
               inputs:
-                metabolites: [乙酰辅酶A]
+                metabolites:
+                  - 乙酰辅酶A
+                cofactors:
+                  - NADH/NAD+
+                signals:
+                  - 低胰岛素/高胰高血糖素
+              compartment: [肝线粒体]
               outputs:
-                metabolites: [酮体]
+                metabolites:
+                  - 乙酰乙酸
+                  - β-羟基丁酸
+                  - 少量丙酮
+                notes: 酮体被释放至血浆供其他组织氧化利用
             control_conditions:
-              - 长期饥饿
-              - 糖供应不足
+              - condition: 长期饥饿
+                mechanism: 葡萄糖耗尽时，乙酰辅酶A 大量来自脂肪酸氧化，超过TCA消耗，驱动酮体生成
+                required_context: [脂肪酸动员充足]
+              - condition: 糖供应不足
+                mechanism: 低糖可促使肝脏将过量乙酰辅酶A 转化为酮体作为脑和外周组织替代能源
+                required_context: [肝脏酮体合成酶系正常]
 
   # =========================
   # 顶层模块 2：解毒
@@ -228,21 +392,45 @@ children:
         name: 氧化还原反应
         feature_description:
           inputs:
-            metabolites: [药物, NADPH, 氧]
+            metabolites:
+              - 药物 / 外源物质
+              - NADPH
+              - O2
+            proteins:
+              - CYP450 酶系 (微粒体)
+          compartment: [肝细胞内质网/微粒体]
           outputs:
-            metabolites: [中间代谢物]
+            metabolites:
+              - 氧化/还原中间产物
+            side_effects:
+              - 活性中间体, ROS 生成风险
+          notes: 相I 产物可为相II 结合反应提供底物
         control_conditions:
-          - CYP450酶激活
+          - condition: CYP450酶激活
+            mechanism: 诱导或激活细胞色素P450 后增强相I（氧化/还原）代谢活性，形成更易结合/可排泄的中间体
+            required_context: [NADPH 供给与底物可及]
 
       - id: REQ-2-2
         name: 结合反应
         feature_description:
           inputs:
-            metabolites: [中间代谢物, 葡萄糖醛酸, 硫酸根]
+            metabolites:
+              - 相I 代谢中间体
+              - UDP-葡糖醛酸 (UDPGA)
+              - PAPS (硫酸供体)
+              - 谷胱甘肽 (GSH)
+            enzymes:
+              - UGT, SULT, GST 等转移酶
+          compartment: [细胞质, 光面内质网]
           outputs:
-            metabolites: [可排泄物]
+            metabolites:
+              - 结合产物（葡萄糖醛酸化/硫酸化/谷胱甘肽结合物）
+            effects:
+              - 水溶性增加，便于胆汁/尿排泄
         control_conditions:
-          - 前体充足
+          - condition: 前体充足
+            mechanism: 结合反应（如葡萄糖醛酸化、硫酸化）依赖于辅基（UDP-葡萄糖醛酸、PAPS）和底物量，前体充足时提高结合速率
+            required_context: [相应辅酶（UDPGA, PAPS）供给正常]
 
   # =========================
   # 顶层模块 3：合成与分泌
@@ -255,31 +443,64 @@ children:
         name: 胆汁酸合成与分泌
         feature_description:
           inputs:
-            metabolites: [胆固醇]
+            metabolites:
+              - 胆固醇
+              - NADPH
+              - O2
+            enzymes:
+              - CYP7A1 等胆汁酸合成酶
+          compartment: [肝细胞光面内质网]
           outputs:
-            metabolites: [胆汁酸]
+            metabolites:
+              - 初级胆汁酸（胆酸, 鹅去氧胆酸等）
+              - 胆汁酸盐（甘氨/牛磺酸结合形式）
+            effects:
+              - 参与脂肪乳化与肠道吸收
         control_conditions:
-          - 脂类消化需求
+          - condition: 脂类消化需求
+            mechanism: 食物脂肪摄入或胆汁酸循环需求增加时，上调胆固醇转化为胆汁酸并通过胆囊/胆道分泌
+            required_context: [胆固醇供给与细胞色素酶系活性]
 
       - id: REQ-3-2
         name: 血浆蛋白合成
         feature_description:
           inputs:
-            metabolites: [氨基酸]
+            metabolites:
+              - 氨基酸（用于翻译）
+            energy:
+              - ATP, GTP
+            machinery:
+              - 核糖体, tRNA, SRP, 分泌途径
+          compartment: [粗面内质网, 高尔基体]
           outputs:
-            metabolites: [白蛋白等血浆蛋白]
+            metabolites:
+              - 分泌性血浆蛋白（白蛋白、转运蛋白等）
+            effects:
+              - 维持血浆胶体渗透压与运载功能
         control_conditions:
-          - 营养充足
+          - condition: 营养充足
+            mechanism: 充足氨基酸和能量状态促进肝脏蛋白合成（转录/翻译上调），增加血浆蛋白产量
+            required_context: [氨基酸池和能量供应充足]
 
       - id: REQ-3-3
         name: 凝血因子合成
         feature_description:
           inputs:
-            metabolites: [氨基酸, 维生素K]
+            metabolites:
+              - 氨基酸
+              - 维生素K（还原型）
+            enzymes:
+              - γ-羧化酶 (维生素K依赖)
+          compartment: [肝细胞内质网/细胞质]
           outputs:
-            metabolites: [凝血因子]
+            metabolites:
+              - 维生素K依赖凝血因子（Ⅱ, Ⅶ, Ⅸ, Ⅹ 等，初产物为不活化前体）
+            effects:
+              - 提供血凝所需蛋白质基础
         control_conditions:
-          - 损伤或凝血信号
+          - condition: 损伤或凝血信号
+            mechanism: 出血/受损时促使凝血因子合成上调（肝脏应答与维生素K依赖的羧化反应活性）以恢复凝血功能
+            required_context: [维生素K 和肝脏合成能力]
 
   # =========================
   # 顶层模块 4：氮处理与尿素循环
@@ -294,11 +515,24 @@ children:
         name: 尿素循环
         feature_description:
           inputs:
-            metabolites: [氨, CO2, ATP]
+            metabolites:
+              - 游离氨 (NH3/NH4+)
+              - CO2 / HCO3-
+              - ATP
+              - 天冬氨酸 (作为第二氮源)
+            enzymes:
+              - CPS1, OTC, ASS1, ASL, ARG1
+          compartment: [线粒体基质 (前两步), 细胞质 (后续步骤)]
           outputs:
-            metabolites: [尿素, ADP]
+            metabolites:
+              - 尿素
+              - 尿素循环中间产物（如延胡索酸/富马酸）
+              - ADP, Pi
+          notes: 尿素通过血液运输至肾脏以排泄
         control_conditions:
-          - 氨浓度升高
+          - condition: 氨浓度升高
+            mechanism: 高氨诱导尿素循环关键酶（如CPS1）活性与氨结合，增加尿素生成以解毒
+            required_context: [ATP 供给和线粒体功能正常]
 
   # =========================
   # 顶层模块 5：激素-神经-免疫调控
@@ -311,22 +545,44 @@ children:
         name: 激素信号接收与转导
         feature_description:
           inputs:
-            signals: [胰岛素, 胰高血糖素]
+            signals:
+              - 胰岛素
+              - 胰高血糖素
+              - 其他激素（生长激素, 皮质醇 等）
+            receptors:
+              - 受体表达与亲和性
+            second_messengers:
+              - cAMP, PIP3, Ca2+, DAG
           outputs:
-            effects: [代谢通路激活或抑制]
+            effects:
+              - 酶活性调节（磷酸化/去磷酸化）
+              - 基因表达调控
+              - 代谢通路的整体激活或抑制
+          compartment: [细胞膜, 细胞质, 细胞核]
 
       - id: REQ-5-2
         name: 神经信号整合
         feature_description:
           inputs:
-            signals: [交感/副交感神经信号]
+            signals:
+              - 交感神经递质 (去甲肾上腺素)
+              - 副交感神经递质 (乙酰胆碱)
+            receptors:
+              - α/β 肾上腺素受体, Ach 受体
           outputs:
-            effects: [代谢速率调节]
+            effects:
+              - 心血管与代谢调整（心率, 血流, 糖/脂代谢速率）
+          notes: 快速神经调节以适应行为或环境需求
 
       - id: REQ-5-3
         name: 免疫信号交互
         feature_description:
           inputs:
-            signals: [炎症因子]
+            signals:
+              - 炎症细胞因子（IL-6, TNF-α, IL-1β 等）
+              - 免疫细胞分泌物（NO, ROS 等）
           outputs:
-            effects: [代谢重编程]
+            effects:
+              - 急性期反应蛋白上调
+              - 代谢路径重编程（胰岛素敏感性改变, 糖异生产生）
+          compartment: [系统性/组织局部]
