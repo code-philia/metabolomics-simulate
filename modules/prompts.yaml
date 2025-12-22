@@ -47,3 +47,14 @@ create_code_from_requirements: |
   并自动构建模拟真实肝脏代谢流（非顺序执行）的python代码，并可视化所有代谢物和激素曲线放在一张图上。生成完整的、可运行的模拟代码文件。
   requirements.yaml:
   {requirements_yaml}
+
+
+detailed_prompts: |
+  继续细化requirements.yaml内容，需要考虑：
+  1）信号分子可能会被降解或失活，数量和活性是动态变化的。代谢物也可以做信号分子，和受体或酶结合，调控生物过程。
+  2）考虑在能量不足的情况下，代谢过程如何被影响。
+  3）必要时，添加更下一层的REQ，直到最细粒度的化学反应。每个子REQ仍需要包含input、output、control_conditions。
+
+
+build_api_interfaces: |
+  根据requirement.yaml新建接口文档，不需要函数的具体实现，但需要列出函数之间的调用。
