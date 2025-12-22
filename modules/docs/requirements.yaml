@@ -66,35 +66,88 @@ children:
             name: 糖原合成
             functional_description: >
               在能量充足状态下，将葡萄糖转化为糖原进行储存。
-            feature_description:
-              inputs:
-                metabolites:
-                  - 葡萄糖
-                  - 葡萄糖-6-磷酸
-                  - UDP-葡糖 (UDP-glucose)
-                  - ATP
-                  - 无机磷 (Pi)
-                signals:
-                  - 胰岛素
-                cofactors:
-                  - Glycogen synthase 活性 (去/加磷酸化状态)
-              compartment: [细胞质]
-              outputs:
-                metabolites:
-                  - 糖原 (肝/肌糖原)
-                  - UDP
-                  - ADP
-                notes: 葡萄糖以 UDP-葡糖 形式加入糖原链，产物回写至环境模块
-            control_conditions:
-              - condition: 胰岛素水平升高
-                mechanism: 通过胰岛素受体-PI3K/Akt 信号通路促进葡萄糖转运和去磷酸化，激活糖原合成酶，抑制糖原磷酸化酶
-                required_context: [胰岛素/胰高血糖素 比值升高, 有可利用葡萄糖]
-              - condition: 细胞ATP充足
-                mechanism: 提供合成所需能量；高ATP/AMP 比值抑制AMPK，间接抑制糖原分解
-                required_context: [线粒体功能正常]
-              - condition: 血糖浓度升高
-                mechanism: 增加细胞葡萄糖摄取并形成葡萄糖-6-磷酸，作为糖原合成底物
-                required_context: [葡萄糖输送通道开放]
+            children:
+              - id: REQ-1-1-1-1
+                name: 磷酸葡萄糖变位酶反应
+                feature_description:
+                  inputs:
+                    metabolites: [葡萄糖-6-磷酸 (G6P)]
+                    enzymes: [磷酸葡萄糖变位酶 (PGM)]
+                  outputs:
+                    metabolites: [葡萄糖-1-磷酸 (G1P)]
+                  compartment: [细胞质]
+                control_conditions:
+                  - id: CC-REQ-1-1-1-1-01
+                    condition: 平衡反应
+                    logic: always_active
+                    action: equilibrate_reaction()
+                    mechanism: 可逆反应，方向取决于浓度
+                    required_context: []
+
+              - id: REQ-1-1-1-2
+                name: UDP-葡萄糖生成
+                feature_description:
+                  inputs:
+                    metabolites: [G1P, UTP]
+                    enzymes: [UDP-葡萄糖焦磷酸化酶]
+                  outputs:
+                    metabolites: [UDP-葡萄糖, PPi]
+                  notes: PPi随后被焦磷酸酶迅速水解，拉动反应向右进行
+                control_conditions:
+                  - id: CC-REQ-1-1-1-2-01
+                    condition: 产物移除驱动
+                    logic: env.metabolites.PPi < threshold.low
+                    action: drive_reaction_forward()
+                    mechanism: 焦磷酸水解提供热力学驱动力
+                    required_context: [pyrophosphatase == active]
+
+              - id: REQ-1-1-1-3
+                name: 糖原合酶反应
+                functional_description: 糖原合成的限速步骤。
+                feature_description:
+                  inputs:
+                    metabolites: [UDP-葡萄糖, 糖原引物]
+                    signals: [胰岛素]
+                    regulators: [G6P, ATP, AMP]
+                    enzymes: [糖原合酶 (GS)]
+                  outputs:
+                    metabolites: [糖原 (n+1), UDP]
+                control_conditions:
+                  - id: CC-REQ-1-1-1-3-01
+                    condition: 胰岛素激活
+                    logic: env.signals.insulin > threshold.high
+                    action: activate_enzyme(Glycogen_Synthase)
+                    mechanism: 通过PI3K/Akt/GSK3β通路，使GS去磷酸化而激活
+                    required_context: [insulin_signaling == functional]
+                  - id: CC-REQ-1-1-1-3-02
+                    condition: 变构激活
+                    logic: env.metabolites.G6P > threshold.activation
+                    action: activate_enzyme(Glycogen_Synthase)
+                    mechanism: G6P变构激活GS
+                    required_context: []
+                  - id: CC-REQ-1-1-1-3-03
+                    condition: 能量状态调节
+                    logic: env.metabolites.ATP / env.metabolites.AMP > threshold.energy_high
+                    action: enable_reaction(Glycogen_Synthase)
+                    mechanism: 高能状态利于合成
+                    required_context: []
+
+              - id: REQ-1-1-1-4
+                name: 分支酶反应
+                feature_description:
+                  inputs:
+                    metabolites: [直链糖原]
+                    enzymes: [分支酶]
+                  outputs:
+                    metabolites: [支链糖原]
+                  notes: 增加溶解度和非还原末端数量
+                control_conditions:
+                  - id: CC-REQ-1-1-1-4-01
+                    condition: 链长依赖
+                    logic: glycogen_chain_length > 11
+                    action: create_branch()
+                    mechanism: 当直链长度足够时进行分支转移
+                    required_context: []
 
           - id: REQ-1-1-2
             name: 糖原分解
@@ -121,15 +174,24 @@ children:
                   - 无机磷 (Pi)
               notes: 部分产物经转化后参与糖酵解或释放入血
             control_conditions:
-              - condition: 胰高血糖素升高
-                mechanism: 激活腺苷酸环化酶(cAMP)-PKA 通路，磷酸化并激活糖原分解酶，抑制糖原合成酶
-                required_context: [低胰岛素信号或高胰高血糖素/胰岛素 比值]
-              - condition: 应激状态
-                mechanism: 肾上腺素/儿茶酚胺通过β受体提升cAMP，增强糖原分解以快速提供葡萄糖
-                required_context: [交感神经活性增加]
-              - condition: 血糖降低
-                mechanism: 细胞外血糖下降触发胰高血糖素分泌并调动肝糖原分解以维持血糖
-                required_context: [肝脏糖原储备可用]
+              - id: CC-REQ-1-1-2-01
+                condition: 胰高血糖素升高
+                logic: env.signals.glucagon > threshold.high
+                action: activate_enzyme(Glycogen_Phosphorylase); inhibit_enzyme(Glycogen_Synthase)
+                mechanism: 激活cAMP-PKA通路，磷酸化相关酶
+                required_context: [insulin_level < threshold.low]
+              - id: CC-REQ-1-1-2-02
+                condition: 应激状态
+                logic: env.signals.adrenaline > threshold.high
+                action: maximize_pathway_flux(Glycogen_Breakdown)
+                mechanism: 肾上腺素提升cAMP，强力激活糖原分解
+                required_context: [sympathetic_activity == high]
+              - id: CC-REQ-1-1-2-03
+                condition: 血糖降低
+                logic: env.metabolites.glucose < threshold.low
+                action: trigger_release(Glucagon)
+                mechanism: 低血糖触发激素分泌，间接启动分解
+                required_context: [glycogen_reserve > 0]
 
           - id: REQ-1-1-3
             name: 糖异生
@@ -159,15 +221,137 @@ children:
                   - NAD+
               notes: 产物可被肝脏释放至血浆以维持血糖
             control_conditions:
-              - condition: 长时间禁食
-                mechanism: 促进肝脏脂肪分解与甘油/氨基酸供给，加速糖异生通路（PEPCK、G6Pase 上调）
-                required_context: [肝脏有可用的非糖前体：乳酸、甘油、生糖氨基酸]
-              - condition: 胰岛素水平低
-                mechanism: 低胰岛素解除对糖异生关键酶的抑制，胰高血糖素/皮质醇协同激活
-                required_context: [胰高血糖素或皮质醇信号存在]
-              - condition: ATP供应充足
-                mechanism: 糖异生为耗能过程，需要ATP提供能量以驱动逆转代谢步骤
-                required_context: [线粒体/细胞能量状态允许]
+              - id: CC-REQ-1-1-3-01
+                condition: 长时间禁食
+                logic: time_since_last_meal > threshold.fasting_duration
+                action: upregulate_gene(PEPCK); upregulate_gene(G6Pase)
+                mechanism: 促进底物供给与关键酶表达
+                required_context: [precursors_available == true]
+              - id: CC-REQ-1-1-3-02
+                condition: 胰岛素水平低
+                logic: env.signals.insulin < threshold.low
+                action: de_repress(Gluconeogenesis_Pathway)
+                mechanism: 解除胰岛素对糖异生关键酶的抑制
+                required_context: [glucagon_or_cortisol_present == true]
+              - id: CC-REQ-1-1-3-03
+                condition: ATP供应充足
+                logic: env.metabolites.ATP > threshold.maintenance
+                action: allow_reaction(Gluconeogenesis)
+                mechanism: 糖异生为耗能过程，需要ATP驱动
+                required_context: [energy_status == sufficient]
+
+          - id: REQ-1-1-4
+            name: 糖酵解
+            functional_description: >
+              将葡萄糖分解为丙酮酸，生成ATP和NADH，是大多数细胞的主要供能路径。
+            children:
+              - id: REQ-1-1-4-1
+                name: 葡萄糖磷酸化 (Step 1)
+                functional_description: 葡萄糖进入细胞后的首步反应，锁定葡萄糖。
+                feature_description:
+                  inputs:
+                    metabolites: [葡萄糖, ATP]
+                    enzymes: [己糖激酶 (HK), 葡萄糖激酶 (GK, 肝脏)]
+                    cofactors: [Mg2+]
+                  outputs:
+                    metabolites: [葡萄糖-6-磷酸 (G6P), ADP]
+                  compartment: [细胞质]
+                control_conditions:
+                  - id: CC-REQ-1-1-4-1-01
+                    condition: 产物抑制 (HK)
+                    logic: env.metabolites.G6P > threshold.inhibition
+                    action: inhibit_enzyme(Hexokinase)
+                    mechanism: 变构抑制
+                    required_context: [tissue != liver]
+                  - id: CC-REQ-1-1-4-1-02
+                    condition: 胰岛素诱导 (GK)
+                    logic: env.signals.insulin > threshold.high
+                    action: upregulate_gene(Glucokinase)
+                    mechanism: 胰岛素促进肝脏GK转录
+                    required_context: [tissue == liver]
+
+              - id: REQ-1-1-4-2
+                name: 磷酸果糖激酶-1 反应 (Step 3)
+                functional_description: 糖酵解的关键限速步骤。
+                feature_description:
+                  inputs:
+                    metabolites: [果糖-6-磷酸 (F6P), ATP]
+                    regulators: [ATP, AMP, 柠檬酸, 果糖-2,6-二磷酸]
+                    enzymes: [PFK-1]
+                  outputs:
+                    metabolites: [果糖-1,6-二磷酸 (F1,6BP), ADP]
+                control_conditions:
+                  - id: CC-REQ-1-1-4-2-01
+                    condition: 能量充足抑制
+                    logic: env.metabolites.ATP > threshold.high
+                    action: inhibit_enzyme(PFK-1)
+                    mechanism: ATP作为变构抑制剂降低酶对F6P亲和力
+                    required_context: []
+                  - id: CC-REQ-1-1-4-2-02
+                    condition: 能量匮乏激活
+                    logic: env.metabolites.AMP > threshold.activation
+                    action: activate_enzyme(PFK-1)
+                    mechanism: AMP解除ATP的抑制作用
+                    required_context: []
+                  - id: CC-REQ-1-1-4-2-03
+                    condition: 信号分子激活
+                    logic: env.metabolites.F26BP > threshold.activation
+                    action: activate_enzyme(PFK-1)
+                    mechanism: F2,6BP是强效变构激活剂，受胰岛素/胰高血糖素调节
+                    required_context: []
+                  - id: CC-REQ-1-1-4-2-04
+                    condition: 下游反馈抑制
+                    logic: env.metabolites.citrate > threshold.inhibition
+                    action: inhibit_enzyme(PFK-1)
+                    mechanism: 柠檬酸积累指示TCA循环饱和，反馈抑制糖酵解
+                    required_context: []
+
+              - id: REQ-1-1-4-3
+                name: 丙酮酸激酶反应 (Step 10)
+                functional_description: 产生ATP的终步反应。
+                feature_description:
+                  inputs:
+                    metabolites: [磷酸烯醇式丙酮酸 (PEP), ADP]
+                    regulators: [F1,6BP, ATP, 丙氨酸]
+                    enzymes: [丙酮酸激酶 (PK)]
+                  outputs:
+                    metabolites: [丙酮酸, ATP]
+                control_conditions:
+                  - id: CC-REQ-1-1-4-3-01
+                    condition: 前馈激活
+                    logic: env.metabolites.F16BP > threshold.activation
+                    action: activate_enzyme(PK)
+                    mechanism: 上游产物F1,6BP前馈激活
+                    required_context: []
+                  - id: CC-REQ-1-1-4-3-02
+                    condition: 能量充足抑制
+                    logic: env.metabolites.ATP > threshold.high
+                    action: inhibit_enzyme(PK)
+                    mechanism: ATP变构抑制
+                    required_context: []
+                  - id: CC-REQ-1-1-4-3-03
+                    condition: 激素调节 (肝脏)
+                    logic: env.signals.glucagon > threshold.high
+                    action: inhibit_enzyme(PK)
+                    mechanism: PKA磷酸化导致PK失活，通过糖异生节约葡萄糖
+                    required_context: [tissue == liver]
+
+              - id: REQ-1-1-4-4
+                name: 中间代谢步骤 (汇总)
+                functional_description: 包括异构化、裂解、氧化磷酸化等平衡步骤。
+                feature_description:
+                  inputs:
+                    metabolites: [G6P, F1,6BP, GAP, 1,3BPG, 3PG, 2PG]
+                    enzymes: [PGI, Aldolase, GAPDH, PGK, PGM, Enolase]
+                  outputs:
+                    metabolites: [F6P, GAP, DHAP, 1,3BPG, 3PG, 2PG, PEP, NADH, ATP]
+                control_conditions:
+                  - id: CC-REQ-1-1-4-4-01
+                    condition: 底物驱动
+                    logic: always_active
+                    action: equilibrate_reaction()
+                    mechanism: 反应接近平衡，方向由底物/产物浓度决定
+                    required_context: []
 
       # -------- 脂代谢 --------
       - id: REQ-1-2
@@ -200,12 +384,18 @@ children:
                   - NADP+
               notes: 合成产物可被酯化并转运/储存
             control_conditions:
-              - condition: 高碳水摄入
-                mechanism: 提供过剩碳源使乙酰辅酶A和柠檬酸增加，推动脂肪酸合成
-                required_context: [糖酵解/丙酮酸代谢通畅]
-              - condition: 胰岛素升高
-                mechanism: 通过胰岛素信号上调ACC和脂肪酸合成酶的表达/活性，促进NADPH 供给
-                required_context: [NADPH 来源（如戊糖磷酸途径）正常]
+              - id: CC-REQ-1-2-1-01
+                condition: 高碳水摄入
+                logic: env.metabolites.glucose > threshold.high && env.metabolites.acetyl_CoA > threshold.high
+                action: increase_flux(Fatty_Acid_Synthesis)
+                mechanism: 提供过剩碳源，推动脂肪酸合成
+                required_context: [glycolysis_active == true]
+              - id: CC-REQ-1-2-1-02
+                condition: 胰岛素升高
+                logic: env.signals.insulin > threshold.high
+                action: activate_enzyme(ACC); upregulate_gene(FAS)
+                mechanism: 上调ACC和FAS表达/活性
+                required_context: [NADPH_source == sufficient]
 
           - id: REQ-1-2-2
             name: 脂肪酸分解（β-氧化）
@@ -229,12 +419,18 @@ children:
                   - FADH2
                 notes: 产生的还原当量供氧化磷酸化生成ATP
             control_conditions:
-              - condition: 能量需求增加
-                mechanism: 低ATP/高AMP 激活AMPK并促进脂肪酸动员和β-氧化以产生ATP
-                required_context: [脂肪酸可被动员并进入线粒体（肉毒碱系统正常）]
-              - condition: 胰岛素低
-                mechanism: 低胰岛素解除对激素敏感性脂肪酶和β-氧化的抑制，利于脂肪酸分解
-                required_context: [升高的胰高血糖素或肾上腺素信号]
+              - id: CC-REQ-1-2-2-01
+                condition: 能量需求增加
+                logic: env.metabolites.ATP < threshold.low || env.metabolites.AMP > threshold.high
+                action: activate_enzyme(AMPK); promote_transport(CPT1)
+                mechanism: 激活AMPK，促进脂肪酸动员和β-氧化
+                required_context: [carnitine_shuttle == functional]
+              - id: CC-REQ-1-2-2-02
+                condition: 胰岛素低
+                logic: env.signals.insulin < threshold.low
+                action: activate_enzyme(HSL); relieve_inhibition(Beta_Oxidation)
+                mechanism: 解除对脂肪酶和β-氧化的抑制
+                required_context: [glucagon_or_adrenaline == high]
 
           - id: REQ-1-2-3
             name: 脂类转运
@@ -256,12 +452,18 @@ children:
                   - 脂类在组织间的分配与储存
                 notes: 转运依赖脂蛋白代谢和膜受体/脂肪酶活性
             control_conditions:
-              - condition: 餐后状态
-                mechanism: 餐后胰岛素促进脂肪酯化并通过乳糜微粒/ VLDL 介导组织间转运
-                required_context: [肠道吸收和脂蛋白合成正常]
-              - condition: 血脂水平变化
-                mechanism: 血浆游离脂肪酸或三酰甘油升高触发转运与储存/清除机制
-                required_context: [脂蛋白受体/脂酶功能正常]
+              - id: CC-REQ-1-2-3-01
+                condition: 餐后状态
+                logic: env.state.is_postprandial == true
+                action: promote_process(Lipid_Esterification); promote_process(Lipoprotein_Transport)
+                mechanism: 胰岛素促进脂肪酯化及脂蛋白转运
+                required_context: [intestinal_absorption == active]
+              - id: CC-REQ-1-2-3-02
+                condition: 血脂水平变化
+                logic: env.metabolites.free_fatty_acids > threshold.high || env.metabolites.triglycerides > threshold.high
+                action: trigger_process(Lipid_Uptake_Clearance)
+                mechanism: 血脂升高触发转运与清除
+                required_context: [lipoprotein_receptors == functional]
 
       # -------- 氨基酸代谢 --------
       - id: REQ-1-3
@@ -289,12 +491,18 @@ children:
                   - α-酮酸(碳骨架)
                 notes: 氨进入谷氨酸/谷氨酰胺代谢或尿素循环
             control_conditions:
-              - condition: 蛋白质摄入过量
-                mechanism: 氨基酸过剩促使肝脏或组织将多余氨基酸分解并进入能量代谢或转氨反应
-                required_context: [胰岛素/营养信号支持蛋白质代谢]
-              - condition: 能量不足
-                mechanism: 能量短缺时优先将氨基酸分解为碳骨架用于糖异生或供能
-                required_context: [糖/脂类供应不能满足能量需求]
+              - id: CC-REQ-1-3-1-01
+                condition: 蛋白质摄入过量
+                logic: env.metabolites.amino_acids > threshold.high
+                action: increase_flux(AA_Catabolism); increase_flux(Transamination)
+                mechanism: 氨基酸过剩促使分解与转氨
+                required_context: [insulin_level > threshold.normal]
+              - id: CC-REQ-1-3-1-02
+                condition: 能量不足
+                logic: env.metabolites.ATP < threshold.low && env.metabolites.glucose < threshold.low
+                action: prioritize_substrate(Amino_Acids_for_Energy)
+                mechanism: 能量短缺时分解氨基酸供能
+                required_context: [energy_demand > supply]
 
           - id: REQ-1-3-2
             name: 氨基酸合成与转运
@@ -317,9 +525,12 @@ children:
                 effects:
                   - 支持蛋白质合成与组织修复
             control_conditions:
-              - condition: 生长或修复需求
-                mechanism: 生长因子和胰岛素样信号上调氨基酸合成与蛋白质生物合成以支持细胞增殖/修复
-                required_context: [可用碳骨架与氨供给]
+              - id: CC-REQ-1-3-2-01
+                condition: 生长或修复需求
+                logic: env.signals.growth_factors > threshold.high || env.signals.insulin > threshold.high
+                action: upregulate_pathway(AA_Synthesis); increase_flux(Protein_Synthesis)
+                mechanism: 生长因子上调合成以支持增殖
+                required_context: [carbon_skeleton_available == true]
 
       # -------- 能量供应 --------
       - id: REQ-1-4
@@ -350,9 +561,12 @@ children:
                   - 热量 (散失)
               notes: 依赖电子传递链完整性与膜电位耦合效率
             control_conditions:
-              - condition: 氧充足
-                mechanism: 充分氧气支持电子传递链进行氧化磷酸化，将NADH/FADH2 的还原当量用于ATP 合成
-                required_context: [线粒体功能正常, 充足的底物（葡萄糖/脂肪酸）]
+              - id: CC-REQ-1-4-1-01
+                condition: 氧充足
+                logic: env.parameters.oxygen_pressure > threshold.normoxia
+                action: enable_process(Oxidative_Phosphorylation)
+                mechanism: 氧气支持电子传递链，生成ATP
+                required_context: [mitochondria_functional == true]
 
           - id: REQ-1-4-2
             name: 酮体生成
@@ -372,12 +586,18 @@ children:
                   - 少量丙酮
                 notes: 酮体被释放至血浆供其他组织氧化利用
             control_conditions:
-              - condition: 长期饥饿
-                mechanism: 葡萄糖耗尽时，乙酰辅酶A 大量来自脂肪酸氧化，超过TCA消耗，驱动酮体生成
-                required_context: [脂肪酸动员充足]
-              - condition: 糖供应不足
-                mechanism: 低糖可促使肝脏将过量乙酰辅酶A 转化为酮体作为脑和外周组织替代能源
-                required_context: [肝脏酮体合成酶系正常]
+              - id: CC-REQ-1-4-2-01
+                condition: 长期饥饿
+                logic: env.state.starvation_mode == true
+                action: increase_flux(Ketogenesis)
+                mechanism: 脂肪酸氧化过量，驱动酮体生成
+                required_context: [fatty_acid_mobilization > threshold.high]
+              - id: CC-REQ-1-4-2-02
+                condition: 糖供应不足
+                logic: env.metabolites.glucose < threshold.critical_low
+                action: activate_pathway(Ketone_Body_Synthesis)
+                mechanism: 低糖促使乙酰辅酶A转化为酮体
+                required_context: [liver_ketogenesis_enzymes == functional]
 
   # =========================
   # 顶层模块 2：解毒
@@ -406,9 +626,12 @@ children:
               - 活性中间体, ROS 生成风险
           notes: 相I 产物可为相II 结合反应提供底物
         control_conditions:
-          - condition: CYP450酶激活
-            mechanism: 诱导或激活细胞色素P450 后增强相I（氧化/还原）代谢活性，形成更易结合/可排泄的中间体
-            required_context: [NADPH 供给与底物可及]
+          - id: CC-REQ-2-1-01
+            condition: CYP450酶激活
+            logic: env.enzymes.CYP450.activity > threshold.basal
+            action: increase_rate(Phase_I_Metabolism)
+            mechanism: 增强氧化/还原代谢活性
+            required_context: [NADPH_supply == sufficient]
 
       - id: REQ-2-2
         name: 结合反应
@@ -428,9 +651,12 @@ children:
             effects:
               - 水溶性增加，便于胆汁/尿排泄
         control_conditions:
-          - condition: 前体充足
-            mechanism: 结合反应（如葡萄糖醛酸化、硫酸化）依赖于辅基（UDP-葡萄糖醛酸、PAPS）和底物量，前体充足时提高结合速率
-            required_context: [相应辅酶（UDPGA, PAPS）供给正常]
+          - id: CC-REQ-2-2-01
+            condition: 前体充足
+            logic: env.metabolites.UDPGA > threshold.min && env.metabolites.PAPS > threshold.min
+            action: promote_reaction(Conjugation)
+            mechanism: 辅基充足提高结合速率
+            required_context: [cofactors_available == true]
 
   # =========================
   # 顶层模块 3：合成与分泌
@@ -457,9 +683,12 @@ children:
             effects:
               - 参与脂肪乳化与肠道吸收
         control_conditions:
-          - condition: 脂类消化需求
-            mechanism: 食物脂肪摄入或胆汁酸循环需求增加时，上调胆固醇转化为胆汁酸并通过胆囊/胆道分泌
-            required_context: [胆固醇供给与细胞色素酶系活性]
+          - id: CC-REQ-3-1-01
+            condition: 脂类消化需求
+            logic: env.signals.lipid_intake > 0 || env.state.enterohepatic_circulation_demand == high
+            action: upregulate_enzyme(CYP7A1)
+            mechanism: 脂肪摄入或循环需求上调合成
+            required_context: [cholesterol_available == true]
 
       - id: REQ-3-2
         name: 血浆蛋白合成
@@ -478,9 +707,12 @@ children:
             effects:
               - 维持血浆胶体渗透压与运载功能
         control_conditions:
-          - condition: 营养充足
-            mechanism: 充足氨基酸和能量状态促进肝脏蛋白合成（转录/翻译上调），增加血浆蛋白产量
-            required_context: [氨基酸池和能量供应充足]
+          - id: CC-REQ-3-2-01
+            condition: 营养充足
+            logic: env.metabolites.amino_acids > threshold.sufficient && env.metabolites.ATP > threshold.sufficient
+            action: increase_rate(Protein_Translation)
+            mechanism: 氨基酸和能量充足促进合成
+            required_context: [ribosome_activity == normal]
 
       - id: REQ-3-3
         name: 凝血因子合成
@@ -498,9 +730,12 @@ children:
             effects:
               - 提供血凝所需蛋白质基础
         control_conditions:
-          - condition: 损伤或凝血信号
-            mechanism: 出血/受损时促使凝血因子合成上调（肝脏应答与维生素K依赖的羧化反应活性）以恢复凝血功能
-            required_context: [维生素K 和肝脏合成能力]
+          - id: CC-REQ-3-3-01
+            condition: 损伤或凝血信号
+            logic: env.signals.bleeding == true || env.signals.tissue_damage == true
+            action: upregulate_pathway(Coagulation_Factor_Synthesis)
+            mechanism: 出血/受损促使合成上调
+            required_context: [vitamin_K_available == true]
 
   # =========================
   # 顶层模块 4：氮处理与尿素循环
@@ -530,9 +765,12 @@ children:
               - ADP, Pi
           notes: 尿素通过血液运输至肾脏以排泄
         control_conditions:
-          - condition: 氨浓度升高
-            mechanism: 高氨诱导尿素循环关键酶（如CPS1）活性与氨结合，增加尿素生成以解毒
-            required_context: [ATP 供给和线粒体功能正常]
+          - id: CC-REQ-4-1-01
+            condition: 氨浓度升高
+            logic: env.metabolites.ammonia > threshold.toxicity
+            action: activate_enzyme(CPS1); increase_flux(Urea_Cycle)
+            mechanism: 高氨诱导关键酶活性，增加尿素生成
+            required_context: [ATP_available == true]
 
   # =========================
   # 顶层模块 5：激素-神经-免疫调控
@@ -586,3 +824,77 @@ children:
               - 急性期反应蛋白上调
               - 代谢路径重编程（胰岛素敏感性改变, 糖异生产生）
           compartment: [系统性/组织局部]
+
+      - id: REQ-5-4
+        name: 信号分子代谢与降解
+        functional_description: >
+          调节激素和信号分子的半衰期，防止信号过度持续，确保调控的动态性。
+        children:
+          - id: REQ-5-4-1
+            name: 胰岛素降解
+            feature_description:
+              inputs:
+                signals:
+                  - 胰岛素
+                enzymes:
+                  - 胰岛素降解酶 (IDE)
+              compartment: [肝脏, 肾脏, 肌肉]
+              outputs:
+                metabolites:
+                  - 氨基酸 / 肽片段
+                effects:
+                  - 降低血浆胰岛素水平，终止信号
+            control_conditions:
+              - id: CC-REQ-5-4-1-01
+                condition: 基础降解
+                logic: always_active
+                action: degrade_signal(Insulin, rate_constant=k_deg)
+                mechanism: 一级动力学降解
+                required_context: []
+              - id: CC-REQ-5-4-1-02
+                condition: 受体介导内吞
+                logic: env.signals.insulin > threshold.high
+                action: increase_rate(Insulin_Degradation)
+                mechanism: 激素-受体复合物内吞后在溶酶体降解
+                required_context: [insulin_receptor_binding == active]
+
+          - id: REQ-5-4-2
+            name: 胰高血糖素降解
+            feature_description:
+              inputs:
+                signals:
+                  - 胰高血糖素
+                enzymes:
+                  - 二肽基肽酶-4 (DPP-4) 等
+              compartment: [肝脏, 肾脏, 血浆]
+              outputs:
+                metabolites:
+                  - 失活肽片段
+            control_conditions:
+              - id: CC-REQ-5-4-2-01
+                condition: 酶解失活
+                logic: always_active
+                action: degrade_signal(Glucagon)
+                mechanism: 血浆或组织蛋白酶水解
+                required_context: []
+
+          - id: REQ-5-4-3
+            name: 儿茶酚胺灭活
+            feature_description:
+              inputs:
+                signals:
+                  - 肾上腺素 / 去甲肾上腺素
+                enzymes:
+                  - MAO (单胺氧化酶)
+                  - COMT (儿茶酚-O-甲基转移酶)
+              compartment: [肝脏, 神经末梢]
+              outputs:
+                metabolites:
+                  - VMA (香草扁桃酸) 等代谢产物
+            control_conditions:
+              - id: CC-REQ-5-4-3-01
+                condition: 摄取与代谢
+                logic: env.signals.adrenaline > 0
+                action: transport_and_degrade(Adrenaline)
+                mechanism: 组织摄取后被MAO/COMT代谢
+                required_context: []
