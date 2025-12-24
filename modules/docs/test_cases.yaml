@@ -1,0 +1,448 @@
+test_suite:
+  name: Human_Metabolism_Common_Scenarios
+  description: >
+    基于生理常见场景的代谢观测事实，用于验证人体代谢与调控系统的行为一致性。
+
+  test_cases:
+
+    - id: TC-SLEEP-FASTING-01
+      scenario: Overnight sleep / early fasting
+      initial_state:
+        time_since_last_meal: 8-12h
+        external_nutrient_input: none
+      expected_changes:
+        metabolites:
+          glucose: decrease_slightly
+          glycogen: decrease
+          free_fatty_acids: increase
+          ketone_bodies: baseline
+          urea: increase_slightly
+        signals:
+          insulin: low
+          glucagon: high
+      covered_requirements:
+        - REQ-1-1-2
+        - REQ-1-1-3
+        - REQ-1-2-2
+      rationale: >
+        禁食状态下降低胰岛素并激活胰高血糖素，
+        通过糖原分解和糖异生维持血糖。
+
+    - id: TC-POSTPRANDIAL-HIGHCARB-01
+      scenario: Postprandial high-carbohydrate meal
+      initial_state:
+        dietary_carbohydrate: high
+        dietary_fat: moderate
+      expected_changes:
+        metabolites:
+          glucose: transient_increase_then_normalize
+          glycogen: increase
+          fatty_acids: increase_via_lipogenesis
+          ATP: increase
+        signals:
+          insulin: high
+          glucagon: suppressed
+      covered_requirements:
+        - REQ-1-1-1
+        - REQ-1-1-4
+        - REQ-1-2-1
+        - REQ-3-2
+      rationale: >
+        胰岛素主导状态促进糖原合成、糖酵解与脂肪酸合成，
+        多余能量被储存。
+
+    - id: TC-EXERCISE-HIGH-INTENSITY-01
+      scenario: Acute high-intensity exercise
+      initial_state:
+        physical_activity: high
+        duration: 30-60min
+      expected_changes:
+        metabolites:
+          ATP: decrease
+          AMP: increase
+          glycogen: rapid_decrease
+          free_fatty_acids: increase
+          lactate: increase
+        signals:
+          adrenaline: high
+      covered_requirements:
+        - REQ-1-1-2
+        - REQ-1-1-4
+        - REQ-1-2-2
+        - REQ-1-4-1
+      rationale: >
+        能量快速消耗激活糖原分解、糖酵解和脂肪酸氧化，
+        以维持ATP供给。
+
+    - id: TC-STARVATION-KETOSIS-01
+      scenario: Prolonged fasting / ketogenic state
+      initial_state:
+        time_since_last_meal: >48h
+        carbohydrate_intake: extremely_low
+      expected_changes:
+        metabolites:
+          glucose: maintained_low
+          free_fatty_acids: high
+          ketone_bodies: high
+          urea: initial_increase_then_stable
+        signals:
+          insulin: very_low
+          glucagon: high
+      covered_requirements:
+        - REQ-1-1-3
+        - REQ-1-2-2
+        - REQ-1-4-2
+        - REQ-4-1
+      rationale: >
+        长期饥饿下脂肪酸氧化和酮体成为主要能量来源，
+        糖异生和尿素循环用于维持最低血糖和氮平衡。
+
+
+    - id: TC-HYPOXIA-01
+      scenario: Systemic hypoxia
+      initial_state:
+        oxygen_pressure: low
+        physical_activity: rest
+      expected_changes:
+        metabolites:
+          lactate: increase
+          ATP: decrease
+          NADH: accumulate
+        signals:
+          adrenaline: moderate
+      covered_requirements:
+        - REQ-1-4-1
+        - REQ-1-1-4
+      rationale: >
+        低氧抑制有氧呼吸，糖酵解增强并产生乳酸，ATP产量下降。
+
+    - id: TC-INFLAMMATION-ACUTE-01
+      scenario: Acute systemic inflammation
+      initial_state:
+        cytokines: high
+        infection_status: present
+      expected_changes:
+        metabolites:
+          glucose: increase
+          amino_acids: mobilize_for_acute_phase
+        signals:
+          insulin_sensitivity: decreased
+          IL6: high
+          TNF_alpha: high
+      covered_requirements:
+        - REQ-5-3
+        - REQ-1-1-3
+        - REQ-3-2
+      rationale: >
+        炎症因子降低胰岛素敏感性，促进糖异生并上调急性期蛋白合成。
+
+    - id: TC-HIGH-PROTEIN-DIET-01
+      scenario: High-protein diet
+      initial_state:
+        dietary_protein: high
+        carbohydrate_intake: normal
+      expected_changes:
+        metabolites:
+          amino_acids: high
+          urea: increase
+          glucose: stable
+        signals:
+          insulin: moderate
+      covered_requirements:
+        - REQ-1-3-1
+        - REQ-4-1
+      rationale: >
+        氨基酸过剩促进氨基酸分解与尿素循环以排氮。
+
+    - id: TC-HIGH-FAT-MEAL-01
+      scenario: Postprandial high-fat meal
+      initial_state:
+        dietary_fat: high
+        bile_acid_pool: normal
+      expected_changes:
+        metabolites:
+          triglycerides: increase
+          free_fatty_acids: increase
+          cholesterol_esters: increase
+        signals:
+          insulin: moderate
+      covered_requirements:
+        - REQ-1-2-3
+        - REQ-3-1
+      rationale: >
+        高脂餐后脂蛋白介导脂类跨组织转运，胆汁酸参与吸收。
+
+    - id: TC-INSULIN-RESISTANCE-01
+      scenario: Insulin resistance (metabolic syndrome)
+      initial_state:
+        insulin: high
+        insulin_receptor_sensitivity: low
+      expected_changes:
+        metabolites:
+          glucose: elevated_persistent
+          fatty_acids: increase
+          glycogen: reduced_synthesis
+        signals:
+          glucagon: relative_high
+      covered_requirements:
+        - REQ-5-1
+        - REQ-1-1-3
+        - REQ-1-2-1
+      rationale: >
+        胰岛素信号受体层面障碍，抑制合成途径且糖异生未被抑制。
+
+
+    - id: TC-CORTISOL-CHRONIC-01
+      scenario: Chronic cortisol elevation
+      initial_state:
+        cortisol: high
+        duration: weeks
+      expected_changes:
+        metabolites:
+          glucose: increase
+          amino_acids: mobilized_from_muscle
+          urea: increase
+        signals:
+          insulin: moderate
+      covered_requirements:
+        - REQ-1-1-3
+        - REQ-1-3-1
+        - REQ-5-1
+      rationale: >
+        皮质醇促进糖异生与肌肉蛋白分解，升高血糖与尿素。
+
+    - id: TC-DKA-01
+      scenario: Diabetic ketoacidosis
+      initial_state:
+        insulin: very_low
+        glucagon: high
+        glucose: very_high
+        dehydration: present
+      expected_changes:
+        metabolites:
+          ketone_bodies: very_high
+          free_fatty_acids: high
+          bicarbonate: decrease
+        signals:
+          adrenaline: moderate
+      covered_requirements:
+        - REQ-1-4-2
+        - REQ-1-2-2
+        - REQ-1-1-3
+      rationale: >
+        低胰岛素高胰高血糖素驱动脂肪酸氧化与酮体生成，导致代谢性酸中毒。
+
+    - id: TC-REFEEDING-AFTER-FAST-01
+      scenario: Refeeding after prolonged fasting
+      initial_state:
+        time_since_last_meal: >48h
+        refeed_carbohydrate: high
+      expected_changes:
+        metabolites:
+          glycogen: replenish
+          ketone_bodies: decrease
+          ATP: increase
+        signals:
+          insulin: high
+          glucagon: suppressed
+      covered_requirements:
+        - REQ-1-1-1
+        - REQ-1-4-2
+        - REQ-1-1-4
+      rationale: >
+        重新进食后胰岛素上升，补充糖原并抑制酮体生成，能量恢复。
+
+    - id: TC-INSULIN-DEGRADATION-IMPAIRED-01
+      scenario: Insulin degradation impaired (IDE low)
+      initial_state:
+        insulin: high
+        insulin_degrading_enzyme_activity: low
+      expected_changes:
+        metabolites:
+          glycogen: prolonged_increase
+          glucose: decrease_then_stable
+        signals:
+          insulin: prolonged_high
+      covered_requirements:
+        - REQ-5-4-1
+        - REQ-1-1-1
+      rationale: >
+        胰岛素降解受限延长其作用时间，促进糖原合成持续。
+
+    - id: TC-LIVER-DETOX-INSUFFICIENCY-01
+      scenario: Hepatic detox insufficiency
+      initial_state:
+        xenobiotic_load: present
+        liver_function: impaired
+      expected_changes:
+        metabolites:
+          phaseI_intermediates: accumulate
+          conjugates: decrease
+          NADPH: decrease
+        signals:
+          CYP450_activity: variable
+      covered_requirements:
+        - REQ-2-1
+        - REQ-2-2
+      rationale: >
+        肝功能不足降低结合反应能力，导致相I中间体积累与毒性风险提升。
+
+    - id: TC-BASELINE-ENV-01
+      scenario: Baseline steady-state environment
+      initial_state:
+        oxygen_pressure: normal
+        pH: normal
+        temperature: normal
+      expected_changes:
+        metabolites:
+          glucose: stable
+          ATP: baseline
+        signals:
+          insulin: baseline
+          glucagon: baseline
+      covered_requirements:
+        - ENV-1
+      rationale: >
+        验证环境读写与稳态保持，作为其它场景的基线。
+
+    - id: TC-MIXED-MEAL-01
+      scenario: Mixed macronutrient meal (carb/fat/protein)
+      initial_state:
+        dietary_carbohydrate: moderate_high
+        dietary_fat: moderate
+        dietary_protein: moderate
+      expected_changes:
+        metabolites:
+          glycogen: increase
+          fatty_acids: increase_via_lipogenesis
+          amino_acids: increase
+          urea: slight_increase
+        signals:
+          insulin: high
+          glucagon: low
+      covered_requirements:
+        - REQ-1
+        - REQ-1-1
+        - REQ-1-2
+        - REQ-1-3
+      rationale: >
+        混合餐引发碳水、脂类与氨基酸的协同代谢与调控。
+
+    - id: TC-HEPATIC-DETOX-GENERAL-01
+      scenario: General xenobiotic exposure
+      initial_state:
+        xenobiotic_load: moderate
+        liver_function: normal
+      expected_changes:
+        metabolites:
+          phaseI_intermediates: increase
+          conjugates: increase
+          NADPH: decrease
+        signals:
+          CYP450_activity: increase
+      covered_requirements:
+        - REQ-2
+        - REQ-2-1
+        - REQ-2-2
+      rationale: >
+        顶层与下一层解毒功能的综合验证，包含相I/II。
+
+    - id: TC-PLASMA-PROTEIN-SYNTHESIS-01
+      scenario: Nutrient replete protein synthesis
+      initial_state:
+        amino_acid_pool: sufficient
+        energy_status: sufficient
+      expected_changes:
+        metabolites:
+          plasma_proteins: increase
+        signals:
+          insulin: moderate
+      covered_requirements:
+        - REQ-3
+        - REQ-3-2
+      rationale: >
+        营养充足时血浆蛋白合成增加，验证合成与分泌模块。
+
+    - id: TC-COAGULATION-UPREG-01
+      scenario: Bleeding and coagulation demand
+      initial_state:
+        bleeding: present
+        vitamin_K: available
+      expected_changes:
+        metabolites:
+          coagulation_factors: increase
+        signals:
+          coagulation_signal: high
+      covered_requirements:
+        - REQ-3
+        - REQ-3-3
+      rationale: >
+        损伤促使凝血因子合成上调，验证凝血合成路径。
+
+    - id: TC-AMMONIA-SPIKE-01
+      scenario: Acute ammonia elevation
+      initial_state:
+        ammonia: high
+        ATP: sufficient
+      expected_changes:
+        metabolites:
+          urea: increase
+        signals:
+          urea_cycle_activation: high
+      covered_requirements:
+        - REQ-4
+        - REQ-4-1
+      rationale: >
+        高氨诱导尿素循环活性增加，验证氮处理顶层与尿素循环。
+
+    - id: TC-MULTI-SIGNAL-INTEGRATION-01
+      scenario: Concurrent hormone, neural, immune signals
+      initial_state:
+        insulin: moderate
+        glucagon: moderate
+        adrenaline: moderate
+        cytokines: moderate
+      expected_changes:
+        metabolites:
+          glucose: variable
+          fatty_acids: mobilized
+          amino_acids: mobilized
+        signals:
+          insulin_sensitivity: decreased_mild
+      covered_requirements:
+        - REQ-5
+        - REQ-5-1
+        - REQ-5-2
+        - REQ-5-3
+        - REQ-5-4
+      rationale: >
+        多信号并存时的整合效应，验证激素-神经-免疫模块。
+
+    - id: TC-PFK1-REGULATION-01
+      scenario: PFK-1 regulation by energy and metabolites
+      initial_state:
+        ATP: high
+        AMP: low
+        citrate: high
+        F26BP: low
+      expected_changes:
+        metabolites:
+          glycolytic_flux: decrease
+          F1_6BP: decrease
+      covered_requirements:
+        - REQ-1-1-4-2
+      rationale: >
+        ATP与柠檬酸抑制PFK-1，F2,6BP低时激活减弱，糖酵解限速下降。
+
+    - id: TC-GLYCOGEN-BRANCHING-THRESH-01
+      scenario: Glycogen branching threshold behavior
+      initial_state:
+        glycogen_chain_length: long
+        UDP_glucose: sufficient
+      expected_changes:
+        metabolites:
+          branched_glycogen: increase
+      covered_requirements:
+        - REQ-1-1-1-4
+      rationale: >
+        直链长度超过阈值触发分支酶反应，增加糖原支链与可用末端数量。
