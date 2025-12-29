@@ -5,7 +5,7 @@
 
 ### TC-SLEEP-FASTING-01（过夜禁食） — modules/docs/test_cases.yaml:8
 - 场景：外源营养停止，维持血糖与基础能量
-- 期望变化：`glucose`轻降，`glycogen`降，`FFA`升，`urea`轻升；`insulin`低，`glucagon`高
+- 期望变化：`glucose`轻降，`glycogen`降，`free_fatty_acids`升，`ketone_bodies`基线，`urea`轻升；`insulin`低，`glucagon`高
 - 覆盖需求：`REQ-1-1-2`, `REQ-1-1-3`, `REQ-1-2-2`
 - 设计依据：早期禁食以糖原分解与糖异生维持血糖
 
@@ -17,13 +17,13 @@
 
 ### TC-EXERCISE-HIGH-INTENSITY-01（高强度运动） — modules/docs/test_cases.yaml:54
 - 场景：短时高功率运动，能量快速消耗
-- 期望变化：`ATP`降，`AMP`升，`glycogen`快速降，`FFA`升，`lactate`升；`adrenaline`高
+- 期望变化：`ATP`降，`AMP`升，`glycogen`快速降，`free_fatty_acids`升，`lactate`升；`adrenaline`高
 - 覆盖需求：`REQ-1-1-2`, `REQ-1-1-4`, `REQ-1-2-2`, `REQ-1-4-1`
 - 设计依据：AMPK 激活与儿茶酚胺驱动分解途径
 
 ### TC-STARVATION-KETOSIS-01（长期饥饿/生酮） — modules/docs/test_cases.yaml:77
 - 场景：葡萄糖稀缺，脂肪酸/酮体主供能
-- 期望变化：`glucose`低维持，`FFA`高，`ketone_bodies`高，`urea`先升后稳；`insulin`极低，`glucagon`高
+- 期望变化：`glucose`低维持，`free_fatty_acids`高，`ketone_bodies`高，`urea`先升后稳；`insulin`极低，`glucagon`高
 - 覆盖需求：`REQ-1-1-3`, `REQ-1-2-2`, `REQ-1-4-2`, `REQ-4-1`
 - 设计依据：脂肪酸氧化过量驱动酮体生成与糖异生
 
@@ -35,7 +35,7 @@
 
 ### TC-INFLAMMATION-ACUTE-01（急性炎症） — modules/docs/test_cases.yaml:119
 - 场景：细胞因子高，代谢重编程
-- 期望变化：`glucose`升，`amino_acids`用于急性期；`insulin_sensitivity`下降，`IL6/TNFα`高
+- 期望变化：`glucose`升，`amino_acids`用于急性期；`insulin_sensitivity`下降，`IL6/TNF_alpha`高
 - 覆盖需求：`REQ-5-3`, `REQ-1-1-3`, `REQ-3-2`
 - 设计依据：炎症降低胰岛素敏感性并上调蛋白合成
 
@@ -47,13 +47,13 @@
 
 ### TC-HIGH-FAT-MEAL-01（高脂餐） — modules/docs/test_cases.yaml:157
 - 场景：脂类吸收与转运
-- 期望变化：`triglycerides/FFA/cholesterol_esters`升；`insulin`中等
+- 期望变化：`triglycerides/free_fatty_acids/cholesterol_esters`升；`insulin`中等
 - 覆盖需求：`REQ-1-2-3`, `REQ-3-1`
 - 设计依据：脂蛋白介导转运，胆汁酸支持吸收
 
 ### TC-INSULIN-RESISTANCE-01（胰岛素抵抗） — modules/docs/test_cases.yaml:175
 - 场景：受体敏感性低，代谢综合征
-- 期望变化：`glucose`持续高，`FFA`升，`glycogen`合成下降；`glucagon`相对高
+- 期望变化：`glucose`持续高，`fatty_acids`升，`glycogen`合成下降；`glucagon`相对高
 - 覆盖需求：`REQ-5-1`, `REQ-1-1-3`, `REQ-1-2-1`
 - 设计依据：胰岛素信号弱化导致合成途径受抑与糖异生未抑制
 
@@ -65,7 +65,7 @@
 
 ### TC-DKA-01（糖尿病酮症酸中毒） — modules/docs/test_cases.yaml:214
 - 场景：极低胰岛素、高胰高血糖素与高血糖
-- 期望变化：`ketone_bodies`很高，`FFA`高，`bicarbonate`降；`adrenaline`中等
+- 期望变化：`ketone_bodies`很高，`free_fatty_acids`高，`bicarbonate`降；`adrenaline`中等
 - 覆盖需求：`REQ-1-4-2`, `REQ-1-2-2`, `REQ-1-1-3`
 - 设计依据：脂肪酸氧化与酮体生成过度导致酸中毒
 
@@ -125,7 +125,7 @@
 
 ### TC-MULTI-SIGNAL-INTEGRATION-01（多信号整合） — modules/docs/test_cases.yaml:398
 - 场景：胰岛素/胰高血糖素/肾上腺素/细胞因子并存
-- 期望变化：`glucose`可变，`fatty_acids/amino_acids`动员；`insulin_sensitivity`轻降
+- 期望变化：`glucose`可变，`fatty_acids/amino_acids`动员；`insulin_sensitivity`轻度下降
 - 覆盖需求：`REQ-5`, `REQ-5-1`, `REQ-5-2`, `REQ-5-3`, `REQ-5-4`
 - 设计依据：激素-神经-免疫信号的系统性整合效应
 
@@ -140,3 +140,9 @@
 - 期望变化：`branched_glycogen`升
 - 覆盖需求：`REQ-1-1-1-4`
 - 设计依据：链长阈值触发分支酶反应，增加非还原末端
+
+### TC-NORMAL-THREE-MEALS-01（正常一日三餐） — modules/docs/test_cases.yaml:1
+- 场景：早餐/午餐/晚餐的常规摄入与代谢响应
+- 期望变化：早餐、午餐、晚餐后`glucose`短暂升后回落；`glycogen`净升；`triglycerides`餐后升；夜间空腹`ketone_bodies`相对升；`insulin`餐后高、`glucagon`空腹高
+- 覆盖需求：`REQ-1-1-1`, `REQ-1-2-1`, `REQ-3-2`, `ENV-1`
+- 设计依据：餐后胰岛素主导合成与储存，夜间空腹脂肪动员与轻度酮生成

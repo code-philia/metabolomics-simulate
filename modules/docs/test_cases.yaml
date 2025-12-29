@@ -446,3 +446,34 @@ test_suite:
         - REQ-1-1-1-4
       rationale: >
         直链长度超过阈值触发分支酶反应，增加糖原支链与可用末端数量。
+
+  add_cases:
+    - id: TC-NORMAL-THREE-MEALS-01
+      name: 正常一日三餐
+      description: 早餐/午餐/晚餐的常规摄入与代谢响应
+      schedule:
+        - start_min: 480
+          end_min: 540
+          bolus:
+            glucose: 0.6
+            amino_acid: 0.2
+            glycerol: 0.05
+        - start_min: 720
+          end_min: 780
+          bolus:
+            glucose: 0.8
+            amino_acid: 0.25
+            glycerol: 0.08
+        - start_min: 1080
+          end_min: 1140
+          bolus:
+            glucose: 0.7
+            amino_acid: 0.22
+            glycerol: 0.07
+      expectations:
+        insulin_postprandial_high: true
+        glucagon_fasting_high: true
+        glucose_peaks_post_meal: true
+        glycogen_net_increase: true
+        triglycerides_postprandial_increase: true
+        ketone_bodies_fasting_higher_than_postprandial: true
