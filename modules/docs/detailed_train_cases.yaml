@@ -1,0 +1,246 @@
+test_suite:
+  name: Train_Detailed_Detox_And_Signal
+  description: >
+    基于 code/detailed_train_cases.py 的详细测试，用于更全面地验证信号降解与典型解毒通路，
+    包括胰岛素降解动力学、乙醇代谢、胆红素葡萄糖醛酸结合以及相II结合反应的辅基消耗，
+    增加了更详细的约束条件和中间变量检查。
+
+  test_cases:
+    - id: TC-DETAILED-INSULIN-DEG
+      scenario: 胰岛素降解动力学对 IDE 活性变化的响应（详细版）
+      time_window:
+        start: 00:00
+        end: 03:00
+      initial_state:
+        env_A_IDE: high (3.0)
+        env_B_IDE: low (0.05)
+        postprandial_hint: 00:20-00:50
+      expected_changes:
+        signals:
+          insulin:
+            comparative_at_~1.0h:
+              env_A_vs_env_B: lower_in_env_A
+              threshold_margin: >= 5%
+            comparative_at_~2.0h:
+              env_A_vs_env_B: lower_in_env_A
+              threshold_margin: >= 5%
+            decay_rate_over_window:
+              env_A_vs_env_B: faster_in_env_A
+              check: end_level_env_A < end_level_env_B
+            degradation_rate:
+              env_A_vs_env_B: higher_in_env_A
+              check: rate_env_A > rate_env_B
+          glucagon:
+            stability: baseline_range
+      visualization:
+        columns: [insulin, glucagon]
+        outputs: ["../results/curves_detailed_insulin_deg_fast.png", "../results/curves_detailed_insulin_deg_slow.png"]
+
+    - id: TC-DETAILED-ETHANOL
+      scenario: 乙醇代谢（ADH/ALDH → 乙酸）（详细版）
+      time_window:
+        start: 00:00
+        end: 04:00
+      input_events:
+        - type: xenobiotic
+          content:
+            ethanol_minute_10: +5.0
+      expected_changes:
+        metabolites:
+          ethanol:
+            direction: decreasing
+            post_injection_window: 00:10-04:00
+            relative_drop: >= 50%_from_peak
+          acetaldehyde:
+            pattern: peak_then_decrease
+            peak_time_window: 00:20-02:30
+            peak_requirement: > 0.5
+          acetate:
+            direction: increasing
+            monotonicity: non_decreasing_after_00:20
+        cofactors:
+          nadh:
+            direction: increasing_during_oxidation
+            coupling: rises_when_ethanol_or_acetaldehyde_oxidized
+          nad_plus:
+            pattern: transient_consumption_then_recovery
+            relation: anti_correlated_with_nadh_generation
+      visualization:
+        columns: [ethanol, acetaldehyde, acetate, nadh, nad_plus]
+        outputs: ["../results/curves_detailed_ethanol.png"]
+
+    - id: TC-DETAILED-BILIRUBIN
+      scenario: 胆红素摄取与UGT结合生成直接胆红素（详细版）
+      time_window:
+        start: 00:00
+        end: 03:00
+      initial_state:
+        indirect_bilirubin: 1.0
+        udpga: 5.0
+        liver_function: normal
+      expected_changes:
+        metabolites:
+          indirect_bilirubin:
+            direction: decreasing
+            constraint: end < start
+          direct_bilirubin:
+            direction: increasing
+            constraint: end > start
+            relation_to_indirect:
+              ratio: >= 0.5
+              check: direct_increase >= indirect_decrease * 0.5
+          udpga:
+            direction: decreasing
+            usage: consumed_by_UGT
+            consumption_ratio:
+              check: udpga_decrease >= indirect_decrease * 0.5
+      visualization:
+        columns: [indirect_bilirubin, direct_bilirubin, udpga]
+        outputs: ["../results/curves_detailed_bilirubin.png"]
+
+    - id: TC-DETAILED-PHASEII
+      scenario: 相II结合反应对辅基供给的依赖与消耗（详细版）
+      time_window:
+        start: 00:00
+        end: 04:00
+      initial_state:
+        udpga: 6.0
+        paps: 3.0
+        gsh: 8.0
+      input_events:
+        - type: xenobiotic
+          content:
+            periodic_phase_I_feed: every_20min_until_120min(+0.8)
+      expected_changes:
+        metabolites:
+          phaseI_intermediates:
+            direction: decreasing
+            relation: declines_as_conjugation_progresses
+            degradation_rate:
+              check: >= 60%_from_peak
+          conjugates:
+            direction: increasing
+            relation: accumulates_with_cofactors_available
+          udpga:
+            direction: decreasing
+            role: glucuronidation_donor
+            consumption_ratio: >= 10%
+          paps:
+            direction: decreasing
+            role: sulfation_donor
+            consumption_ratio: >= 10%
+          gsh:
+            direction: decreasing
+            role: gst_conjugation_donor
+            consumption_ratio: >= 10%
+      visualization:
+        columns: [phaseI_intermediates, conjugates, udpga, paps, gsh]
+        outputs: ["../results/curves_detailed_phaseII.png"]
+
+    - id: TC-DETAILED-CONSTRAINT-GLUCOSE
+      scenario: 糖代谢稳态与餐后峰值约束（详细版）
+      time_window:
+        start: 00:00
+        end: 06:00
+      input_events:
+        - type: meal
+          content:
+            carbohydrate_at_00:20: moderate
+            carbohydrate_at_03:00: moderate
+      expected_changes:
+        metabolites:
+          glucose:
+            postprandial_peak_then_fall_within_~2h: true
+            fasting_phase_stable: true
+            peak_range:
+              check: initial * 1.1 <= peak <= initial * 2.0
+          ketone_body:
+            late_fasting_slight_rise: true
+            increase_range:
+              check: 0.1 <= increase <= 2.0
+        logic:
+          stop_gluconeogenesis_when_glucose_high: qualitative
+          start_glycogenolysis_or_gluconeogenesis_when_low: qualitative
+      visualization:
+        columns: [glucose, glycogen, ketone_body, insulin, glucagon]
+        outputs: ["../results/curves_detailed_constraint_glucose.png"]
+
+    - id: TC-DETAILED-CONSTRAINT-UREA
+      scenario: 氨升高时尿素生成与血氨控制（详细版）
+      time_window:
+        start: 00:00
+        end: 04:00
+      input_events:
+        - type: nitrogen_load
+          content:
+            ammonia_bolus_at_00:10: +2.0
+            ammonia_bolus_at_00:40: +2.0
+      expected_changes:
+        metabolites:
+          urea:
+            increase_after_ammonia_load: true
+            relation_to_ammonia:
+              ratio: >= 0.3
+              check: urea_increase >= ammonia_decrease * 0.3
+          ammonia:
+            peak_then_drop_back_toward_baseline: true
+            relative_drop: <= 60%_from_peak
+        logic:
+          mass_balance_ammonia_to_urea: qualitative
+      visualization:
+        columns: [ammonia, urea, amino_acid]
+        outputs: ["../results/curves_detailed_constraint_urea.png"]
+
+    - id: TC-DETAILED-CONSTRAINT-ALBUMIN
+      scenario: 白蛋白合成维持在正常范围（详细版）
+      time_window:
+        start: 00:00
+        end: 06:00
+      initial_state:
+        liver_function: normal
+      input_events:
+        - type: amino_acid_supply
+          content:
+            periodic_amino_acid_feed: every_20min_during_00:30-02:00(+0.2)
+      expected_changes:
+        metabolites:
+          albumin:
+            stays_within_approx_normal_range_35_55_g_per_L: true
+            shows_postprandial_support: true
+            synthesis_rate:
+              check: >= 0.0
+          amino_acid:
+            consumption:
+              check: >= 0.0
+      visualization:
+        columns: [albumin, amino_acid, atp, insulin]
+        outputs: ["../results/curves_detailed_constraint_albumin.png"]
+
+    - id: TC-DETAILED-CONSTRAINT-LIPID
+      scenario: 脂代谢约束与储存逻辑（详细版）
+      time_window:
+        start: 00:00
+        end: 06:00
+      input_events:
+        - type: lipid_load
+          content:
+            fatty_acid_bolus_at_00:20: +10.0
+            triglyceride_bolus_at_03:00: +8.0
+        - type: postprandial
+          content:
+            windows: [00:20-01:20, 03:00-04:00]
+      expected_changes:
+        metabolites:
+          fatty_acid:
+            decreases_via_beta_oxidation_or_storage: true
+            degradation_rate:
+              check: >= 60%_from_peak
+          triglycerides:
+            increases_but_not_unbounded: true
+            increase_range:
+              check: initial * 1.1 <= final <= initial * 1.8
+        logic:
+          storage_vs_export_balance: qualitative
+      visualization:
+        columns: [fatty_acid, triglycerides, atp, insulin, glucagon]
+        outputs: ["../results/curves_detailed_constraint_lipid.png"]
