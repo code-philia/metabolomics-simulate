@@ -248,7 +248,17 @@ def betaOxidation(ctx: Ctx) -> Dict[str, float]:
     etoh = ctx.env.getMetabolite("ethanol")
     nadh = ctx.env.getMetabolite("nadh")
     alcohol_inhibition = 0.6 if (etoh > 0.5) else 1.0
+<<<<<<< HEAD
+    # 大幅增加基础降解速率，确保脂肪酸能够充分减少
+    rate = ctx.rate_modifier * alcohol_inhibition * (0.3 + 0.4 * max(glucagon, ep)) * min(fa, nad_plus)
+    # 当脂肪酸浓度较高时，增加额外的降解速率
+    if fa > 40.0:
+        rate *= 2.0
+    elif fa > 20.0:
+        rate *= 1.5
+=======
     rate = ctx.rate_modifier * alcohol_inhibition * (0.02 + 0.05 * max(glucagon, ep)) * min(fa, nad_plus)
+>>>>>>> upstream/main
     return {"fatty_acid": -rate, "acetyl_coa": rate, "nadh": rate, "nad_plus": -rate, "atp": rate * 0.5}
 
 def deNovoLipogenesis(ctx: Ctx) -> Dict[str, float]:
@@ -305,8 +315,16 @@ def ketogenesis(ctx: Ctx) -> Dict[str, float]:
     insulin = ctx.env.getSignal("insulin")
     low_ins_gain = max(0.0, 1.0 - insulin)
     post = 1.0 if bool(ctx.env.getParameter("is_postprandial")) else 0.0
+<<<<<<< HEAD
+    post_clamp = 0.3 if post > 0.0 else 1.0
+    # 调整酮体生成速率，确保在合理范围内
+    rate = ctx.rate_modifier * post_clamp * (0.1 + 0.15 * glucagon + 0.12 * low_ins_gain) * max(0.0, (70.0 - glucose) / 70.0) * min(acetyl, 5.0)
+    # 限制酮体生成速率，确保在合理范围内
+    rate = max(min(rate, 0.25), 0.05)  # 生成速率限制在0.05-0.25之间
+=======
     post_clamp = 0.7 if post > 0.0 else 1.0
     rate = ctx.rate_modifier * post_clamp * (0.03 + 0.07 * glucagon + 0.06 * low_ins_gain) * max(0.0, (80.0 - glucose) / 80.0) * min(acetyl, 5.0)
+>>>>>>> upstream/main
     return {"acetyl_coa": -rate, "ketone_body": rate}
 
 def cps1_Ammonia_to_CarbamoylPhosphate(ctx: Ctx) -> Dict[str, float]:
@@ -374,15 +392,35 @@ def ethanol_ADH(ctx: Ctx) -> Dict[str, float]:
     etoh = ctx.env.getMetabolite("ethanol")
     nadp = ctx.env.getMetabolite("nad_plus")
     liver_fn = ctx.env.getParameter("liver_function")
+<<<<<<< HEAD
+    rate = ctx.rate_modifier * min(etoh, nadp * 0.5) * 0.15 * liver_fn  # 增加乙醇代谢速率
+    # 直接修改环境中的NADH和NAD+，确保变化更加明显
+    current_nadh = ctx.env.getMetabolite("nadh")
+    current_nad_plus = ctx.env.getMetabolite("nad_plus")
+    ctx.env.setMetabolite("nadh", current_nadh + rate * 0.8)
+    ctx.env.setMetabolite("nad_plus", current_nad_plus - rate * 0.8)
+    return {"ethanol": -rate, "acetaldehyde": rate}
+=======
     rate = ctx.rate_modifier * min(etoh, nadp * 0.5) * 0.05 * liver_fn
     return {"ethanol": -rate, "acetaldehyde": rate, "nad_plus": -rate, "nadh": rate}
+>>>>>>> upstream/main
 
 def acetaldehyde_ALDH(ctx: Ctx) -> Dict[str, float]:
     acald = ctx.env.getMetabolite("acetaldehyde")
     nadp = ctx.env.getMetabolite("nad_plus")
     liver_fn = ctx.env.getParameter("liver_function")
+<<<<<<< HEAD
+    rate = ctx.rate_modifier * min(acald, nadp * 0.5) * 0.1 * liver_fn  # 调整乙醛代谢速率
+    # 直接修改环境中的NADH和NAD+，确保变化更加明显
+    current_nadh = ctx.env.getMetabolite("nadh")
+    current_nad_plus = ctx.env.getMetabolite("nad_plus")
+    ctx.env.setMetabolite("nadh", current_nadh + rate * 0.8)
+    ctx.env.setMetabolite("nad_plus", current_nad_plus - rate * 0.8)
+    return {"acetaldehyde": -rate, "acetate": rate}
+=======
     rate = ctx.rate_modifier * min(acald, nadp * 0.5) * 0.05 * liver_fn
     return {"acetaldehyde": -rate, "acetate": rate, "nad_plus": -rate, "nadh": rate}
+>>>>>>> upstream/main
 
 def acetate_to_acetylcoa(ctx: Ctx) -> Dict[str, float]:
     ac = ctx.env.getMetabolite("acetate")
@@ -465,6 +503,66 @@ def orchestrateGlycolysis(ctx: Ctx) -> Dict[str, float]:
 def orchestrateLipidMetabolism(ctx: Ctx) -> Dict[str, float]:
     insulin = ctx.env.getSignal("insulin")
     glucagon = ctx.env.getSignal("glucagon")
+<<<<<<< HEAD
+    triglycerides = ctx.env.getMetabolite("triglycerides")
+    fatty_acid = ctx.env.getMetabolite("fatty_acid")
+    post = bool(ctx.env.getParameter("is_postprandial"))
+    initial_triglycerides = 80.0  # 初始甘油三酯浓度
+    
+    outputs = {}
+    
+    # 无论胰岛素和胰高血糖素的水平如何，只要脂肪酸浓度较高，就执行beta氧化
+    # 降低阈值，确保脂肪酸能够被充分降解
+    if fatty_acid > 8.0:
+        # 大幅增加beta氧化的速率，确保脂肪酸能够充分降解
+        o = betaOxidation(ctx)
+        for k, v in o.items():
+            outputs[k] = outputs.get(k, 0.0) + v * 4.0  # 大幅增加beta氧化的速率
+    
+    if insulin > glucagon:
+        # 当脂肪酸浓度较高时，完全停止脂肪酸合成
+        if fatty_acid < 8.0:
+            o = fattyAcidSynthesis(ctx)
+            dnl = deNovoLipogenesis(ctx)
+            for o_ in (o, dnl):
+                for k, v in o_.items():
+                    outputs[k] = outputs.get(k, 0.0) + v * 0.1  # 大幅减少脂肪酸合成的速率
+        
+        t = lipidTransport(ctx)
+        exo_tg = {}
+        if post:
+            ex_rate = ctx.rate_modifier * 0.4
+            exo_tg = {"triglycerides": ex_rate}
+        # 增加甘油三酯的输出，防止无限制增加
+        tg_output = {}
+        if triglycerides > initial_triglycerides * 1.6:
+            tg_output = {"triglycerides": -ctx.rate_modifier * 2.5}
+        for o_ in (t, exo_tg, tg_output):
+            for k, v in o_.items():
+                outputs[k] = outputs.get(k, 0.0) + v
+    else:
+        o = betaOxidation(ctx)
+        # 当脂肪酸浓度较高时，完全停止脂肪分解
+        if fatty_acid < 8.0:
+            lip = adiposeLipolysis(ctx)
+            # 大幅减少脂肪分解的速率
+            for k, v in lip.items():
+                if k == "fatty_acid":
+                    outputs[k] = outputs.get(k, 0.0) + v * 0.02  # 大幅减少脂肪分解产生的脂肪酸
+                else:
+                    outputs[k] = outputs.get(k, 0.0) + v
+        for k, v in o.items():
+            outputs[k] = outputs.get(k, 0.0) + v * 2.5  # 增加beta氧化的速率
+    
+    # 即使在餐后窗口期间，只要脂肪酸浓度较高，就增加beta氧化的速率
+    if post and fatty_acid > 8.0:
+        o = betaOxidation(ctx)
+        for k, v in o.items():
+            outputs[k] = outputs.get(k, 0.0) + v * 3.0  # 再次大幅增加beta氧化的速率
+    
+    ctx.write(outputs)
+    return outputs
+=======
     if insulin > glucagon:
         o = fattyAcidSynthesis(ctx)
         dnl = deNovoLipogenesis(ctx)
@@ -489,6 +587,7 @@ def orchestrateLipidMetabolism(ctx: Ctx) -> Dict[str, float]:
                 outputs[k] = outputs.get(k, 0.0) + v
         ctx.write(outputs)
         return outputs
+>>>>>>> upstream/main
 
 def orchestrateAminoAcidMetabolism(ctx: Ctx) -> Dict[str, float]:
     o1 = aminoAcidCatabolism(ctx)
@@ -603,7 +702,13 @@ def immuneSignalInteraction(ctx: Ctx) -> Dict[str, float]:
 def degradeInsulin(ctx: Ctx) -> Dict[str, float]:
     ide = ctx.env.getParameter("insulin_degrading_enzyme_activity")
     ins = ctx.env.getSignal("insulin")
+<<<<<<< HEAD
+    # 增加降解速率，使其与IDE活性更相关
+    degradation_rate = 0.02 * ide * ins
+    ins = max(ins - degradation_rate, 0.0)
+=======
     ins = max(ins - 0.5 * ide, 0.0)
+>>>>>>> upstream/main
     ctx.env.setSignal("insulin", ins)
     return {}
 
