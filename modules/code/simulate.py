@@ -8,6 +8,8 @@ class MetabolicEnvironment:
         self.metabolites = {
             # --- 糖代谢 (mmol/L) ---
             "glucose": 5.0,            # 正常空腹血糖 3.9-6.1 mmol/L
+            "g6p": 0.1,                # 葡萄糖-6-磷酸 (中间缓冲池)
+            "f16bp": 0.1,
             "glycogen": 400.0,         # 肝糖原储备，约 100-120g，此处设定为储备浓度单位
             "pyruvate": 0.1,           # 丙酮酸正常水平较低 (0.05-0.2)
             "lactate": 1.0,            # 正常乳酸 < 2.0 mmol/L
@@ -197,63 +199,118 @@ class ResourceEnv(MetabolicEnvironment):
     def recordRate(self, name: str, rate: float) -> None:
         self.pool.record_rate(name, rate)
 
-
-def hexokinase_or_glucokinase(ctx: Ctx) -> Dict[str, float]:
-    insulin = ctx.env.getSignal("insulin")
-    ins_sens = ctx.env.getParameter("insulin_sensitivity")
+def hexokinase_step(ctx: Ctx) -> Dict[str, float]:
     glucose = ctx.env.getMetabolite("glucose")
     atp = ctx.env.getMetabolite("atp")
-    rate = ctx.rate_modifier * max(0.0, min(glucose, atp)) * (0.01 + 0.05 * insulin * ins_sens)
-    ctx.env.setMetabolite("glucose", glucose - rate)
-    ctx.env.setMetabolite("atp", atp - rate * 0.2)
-    ctx.env.recordRate("hexokinase_or_glucokinase", rate)
-    return {"glycogen": 0.0}
+    insulin = ctx.env.getSignal("insulin")
+    # 肝脏葡萄糖激酶 (GK) 的 Km 较高，受胰岛素高度诱导
+    v_max = 0.1
+    km_glucose = 5.0 
+    # 速率受血糖和胰岛素共同驱动
+    rate = v_max * (glucose / (glucose + km_glucose)) * (0.2 + 0.8 * insulin)
+    actual_rate = min(rate, glucose * 0.1, atp * 0.5)
+    ctx.env.recordRate("hexokinase", actual_rate)
+    return {"glucose": -actual_rate, "g6p": actual_rate, "atp": -actual_rate, "adp": actual_rate}
 
 def pgm_G6P_to_G1P(ctx: Ctx) -> Dict[str, float]:
-    g6p = min(ctx.env.getMetabolite("glucose"), 2.0)
-    ctx.env.recordRate("pgm_G6P_to_G1P", g6p)
-    return {"glucose": -g6p, "glycogen": 0.0}
+    g6p = ctx.env.getMetabolite("g6p")
+    ins = ctx.env.getSignal("insulin")
+    # 1. 动力学设计：PGM 是双向酶，但在合成路径中，它受胰岛素间接驱动
+    # 我们设定一个合理的 Vmax，并使用米氏方程防止底物抽干
+    v_max = 0.5 
+    km_g6p = 0.5
+    # 2. 只有当胰岛素存在时，糖原合成路径才活跃
+    # 这样可以避免在饥饿状态下 G6P 浪费在合成路径上
+    activation = ins / (ins + 0.2) 
+    # 3. 计算速率：基础速率 * 饱和度 * 激活度
+    rate = v_max * (g6p / (g6p + km_g6p)) * activation
+    # 安全保护：单步消耗不超过现有底物的 20%
+    actual_rate = min(rate, g6p * 0.2)
+    ctx.env.recordRate("pgm_G6P_to_G1P", actual_rate)
+    # 4. 返回 G6P 的消耗和中间体 G1P 的产生
+    # 注意：后续的 udpGlucoseSynthesis 应该消耗这里产生的 g1p
+    return {
+        "g6p": -actual_rate, 
+        "g1p": actual_rate  # 产生的 G1P 供下一步使用
+    }
 
 def udpGlucoseSynthesis(ctx: Ctx) -> Dict[str, float]:
+    g1p = ctx.env.getMetabolite("g1p")
     atp = ctx.env.getMetabolite("atp")
-    glucose = ctx.env.getMetabolite("glucose")
-    rate = ctx.rate_modifier * min(glucose, atp * 0.5) * 0.02
-    ctx.env.recordRate("udpGlucoseSynthesis", rate)
-    return {"glucose": -rate, "atp": -rate * 0.2}
+    # 动力学：依赖 G1P 供应，且需要能量
+    v_max = 0.5
+    rate = v_max * (g1p / (g1p + 0.1)) * (atp / (atp + 0.2))
+    # 安全保护
+    actual_rate = min(rate, g1p * 0.5, atp * 0.2)
+    ctx.env.recordRate("udpGlucoseSynthesis", actual_rate)
+    return {
+        "g1p": -actual_rate, 
+        "udpg": actual_rate,  # 产生中间体 UDP-Glucose
+        "atp": -actual_rate * 1.0, # 每步消耗 1 个高能磷酸键
+        "adp": actual_rate * 1.0
+    }
 
 def glycogenSynthaseStep(ctx: Ctx) -> Dict[str, float]:
-    insulin = ctx.env.getSignal("insulin")
-    ins_sens = ctx.env.getParameter("insulin_sensitivity")
-    glucose = ctx.env.getMetabolite("glucose")
-    atp = ctx.env.getMetabolite("atp")
-    rate = ctx.rate_modifier * (0.01 + 0.05 * insulin * ins_sens) * min(glucose, atp)
-    ctx.env.recordRate("glycogenSynthaseStep", rate)
-    return {"glucose": -rate, "glycogen": rate, "atp": -rate * 0.1, "adp": rate * 0.1}
+    ins = ctx.env.getSignal("insulin")
+    udpg = ctx.env.getMetabolite("udpg")
+    # 胰岛素开关：低于 0.3 基本不活跃
+    activation = 1.0 / (1.0 + np.exp(-10.0 * (ins - 0.4)))
+    v_max = 0.6
+    rate = v_max * (udpg / (udpg + 0.5)) * activation
+    actual_rate = min(rate, udpg * 0.8)
+    ctx.env.recordRate("glycogenSynthaseStep", actual_rate)
+    return {
+        "udpg": -actual_rate,
+        "glycogen": actual_rate # 碳原子最终进入糖原池
+    }
 
 def branchingEnzymeStep(ctx: Ctx) -> Dict[str, float]:
+    # 在简化模型中，分支酶维持糖原结构的可用性
+    # 我们可以设定它消耗极少量 ATP 来维持生物化学模拟的严谨性
     glycogen = ctx.env.getMetabolite("glycogen")
-    rate = ctx.rate_modifier * min(glycogen, 1.0) * 0.01
+    rate = 0.01 * (glycogen / (glycogen + 100.0))
     ctx.env.recordRate("branchingEnzymeStep", rate)
-    return {"glycogen": rate * 0.0}
+    return {"atp": -rate * 0.1, "adp": rate * 0.1} # 仅产生微量能耗
 
 def glycogenPhosphorylaseStep(ctx: Ctx) -> Dict[str, float]:
     glucagon = ctx.env.getSignal("glucagon")
     ep = ctx.env.getSignal("epinephrine")
     glycogen = ctx.env.getMetabolite("glycogen")
-    rate = ctx.rate_modifier * (0.02 + 0.04 * glucagon + 0.08 * ep) * glycogen
-    ctx.env.recordRate("glycogenPhosphorylaseStep", rate)
-    return {"glycogen": -rate, "glucose": rate}
+    v_max = 0.8  # 略微调高 Vmax，因为它是分解的主力
+    km_glycogen = 100.0 
+    # 逻辑：基础活性 + 激素激活
+    activation = (0.05 + 0.6 * glucagon + 0.4 * ep)
+    activation = min(activation, 1.2) # 强刺激下可以略超基准
+    rate = (v_max * glycogen / (km_glycogen + glycogen)) * activation
+    actual_rate = min(rate, glycogen * 0.05) # 提高单步最大分解比例，增强饥饿响应
+    ctx.env.recordRate("glycogenPhosphorylaseStep", actual_rate)
+    return {"glycogen": -actual_rate, "g1p": actual_rate}
 
 def debranchingEnzymeStep(ctx: Ctx) -> Dict[str, float]:
     glycogen = ctx.env.getMetabolite("glycogen")
-    rate = ctx.rate_modifier * min(glycogen, 1.0) * 0.01
+    glc = ctx.env.getSignal("glucagon")
+    # 受胰高血糖素激活
+    activation = glc / (glc + 0.5)
+    rate = 0.1 * (glycogen / (glycogen + 50.0)) * activation
     ctx.env.recordRate("debranchingEnzymeStep", rate)
-    return {"glycogen": -rate * 0.1, "glucose": rate * 0.1}
+    # 糖原脱支：大部分变成 G1P 的前体，小部分（10%）直接变成葡萄糖
+    return {
+        "glycogen": -rate,
+        "glucose": rate * 0.1, 
+        "g1p": rate * 0.9
+    }
 
 def g1p_to_g6p(ctx: Ctx) -> Dict[str, float]:
-    rate = 0.0
-    ctx.env.recordRate("g1p_to_g6p", rate)
-    return {"glucose": 0.0}
+    g1p = ctx.env.getMetabolite("g1p")
+    # 这是一个平衡反应，方向通常由 g1p 的堆积驱动
+    v_max = 1.0 
+    rate = v_max * (g1p / (g1p + 0.1))
+    actual_rate = min(rate, g1p * 0.9)
+    ctx.env.recordRate("g1p_to_g6p", actual_rate)
+    return {
+        "g1p": -actual_rate,
+        "g6p": actual_rate
+    }
 
 def pepck_OAA_to_PEP(ctx: Ctx) -> Dict[str, float]:
     atp = ctx.env.getMetabolite("atp")
@@ -262,24 +319,79 @@ def pepck_OAA_to_PEP(ctx: Ctx) -> Dict[str, float]:
     return {"atp": -rate}
 
 def g6pase_G6P_to_Glucose(ctx: Ctx) -> Dict[str, float]:
-    rate = 0.0
+    g6p = ctx.env.getMetabolite("g6p")
+    ins = ctx.env.getSignal("insulin")
+    # 胰岛素的强力钳制逻辑
+    # 当胰岛素 > 0.2 时，闸门几乎完全关闭
+    gate_open = 1.0 / (1.0 + np.exp(10.0 * (ins + 0.2)))
+    v_max = 1.0 
+    km = 0.5
+    rate = v_max * (g6p / (g6p + km)) * gate_open
+    outputs = {"g6p": -rate, "glucose": rate}
+    ctx.write(outputs)
     ctx.env.recordRate("g6pase_G6P_to_Glucose", rate)
-    return {"glucose": 0.0}
+    return outputs
 
-def glycolysis_middle_steps(ctx: Ctx) -> Dict[str, float]:
-    glucose = ctx.env.getMetabolite("glucose")
-    nad_plus = ctx.env.getMetabolite("nad_plus")
+def pfk1_step(ctx: Ctx) -> Dict[str, float]:
+    g6p = ctx.env.getMetabolite("g6p")
+    atp = ctx.env.getMetabolite("atp")
+    # 增加反馈抑制：除了 ATP 抑制，如果 F16BP 已经堆积了，也抑制 PFK1
+    f16bp = ctx.env.getMetabolite("f16bp")
+    product_inhibition = 1.0 / (1.0 + (f16bp / 0.5))
+    # 生理反馈：ATP 是 PFK-1 的异构抑制剂
+    # 当 ATP 充足时（>3.0），抑制糖酵解流量
+    energy_inhibition = 1.0 / (1.0 + max(0, atp - 3.0) * 2.0)
+    v_max = 0.2
+    km_g6p = 0.2  # 低 Km 确保 G6P 能被有效向下游拉动
+    rate = v_max * (g6p / (g6p + km_g6p)) * energy_inhibition * product_inhibition
+    actual_rate = min(rate, g6p, atp * 0.5)
+    ctx.env.recordRate("pfk1", actual_rate)
+    # 此处产生一个虚拟的下游中间体 'f16bp' 或直接导向 'pep'
+    return {"g6p": -actual_rate, "f16bp": actual_rate, "atp": -actual_rate, "adp": actual_rate}
+
+def pyruvate_kinase_step(ctx: Ctx) -> Dict[str, float]:
+    f16bp = ctx.env.getMetabolite("f16bp")
     adp = ctx.env.getMetabolite("adp")
-    o2 = ctx.env.getMetabolite("oxygen")
-    rate = ctx.rate_modifier * min(glucose, nad_plus * 0.5, adp * 0.5) * 0.05
-    lact_frac = 0.8 if o2 < 50.0 else 0.5
-    ctx.env.recordRate("glycolysis_middle_steps", rate)
-    return {"glucose": -rate, "nadh": rate, "nad_plus": -rate, "atp": rate, "adp": -rate, "lactate": rate * lact_frac}
+    nad_plus = ctx.env.getMetabolite("nad_plus")
+    # 1. 理论速率计算 - 进一步降低最大速率防止震荡
+    v_max = 0.4  # 从0.5进一步降低到0.4
+    # 引入 ADP 需求驱动，但使用更平缓的响应
+    potential_rate = v_max * (f16bp / (f16bp + 0.4)) * (adp / (adp + 0.4)) * (nad_plus / (nad_plus + 0.15))
+    # 2. 核心平滑逻辑：单步消耗率限制，进一步降低抽取比例
+    # 确保 actual_rate 不会超过 f16bp 的 12%，也不会超过 adp 存量的 25%
+    safe_factor = min(1.0, (f16bp * 0.12) / (potential_rate + 1e-6), (adp * 0.25) / (potential_rate * 2.0 + 1e-6))
+    actual_rate = potential_rate * safe_factor * 0.85  # 从0.9降低到0.85阻尼因子
+    ctx.env.recordRate("pyruvate_kinase", actual_rate)
+    return {
+        "f16bp": -actual_rate, 
+        "pyruvate": actual_rate * 2.0, 
+        "atp": actual_rate * 2.0, 
+        "adp": -actual_rate * 2.0,
+        "nad_plus": -actual_rate,
+        "nadh": actual_rate
+    }
 
-def pyruvateKinase_step(ctx: Ctx) -> Dict[str, float]:
-    rate = 0.0
-    ctx.env.recordRate("pyruvateKinase_step", rate)
-    return {"atp": 0.0}
+def pyruvate_destination_logic(ctx: Ctx) -> Dict[str, float]:
+    pyruvate = ctx.env.getMetabolite("pyruvate")
+    oxygen = ctx.env.getMetabolite("oxygen")
+    v_max = 0.5  # 从0.8降低到0.5
+    # 基础速率 - 使用更平缓的米氏常数
+    potential_rate = v_max * (pyruvate / (pyruvate + 0.8))  # 从0.5增加到0.8
+    # 3. 核心平滑逻辑：降低抽取比例
+    # 无论 v_max 多大，单步只消耗当前丙酮酸的 20% (从25%降低)
+    actual_rate = potential_rate * min(1.0, (pyruvate * 0.2) / (potential_rate + 1e-6)) * 0.9  # 添加0.9阻尼因子
+    # 使用更平缓的厌氧比例计算
+    anaerobic_ratio = 1.0 / (1.0 + (oxygen / 15.0))  # 从10.0增加到15.0，更平缓
+    lactate_rate = actual_rate * anaerobic_ratio
+    aerobic_rate = actual_rate * (1.0 - anaerobic_ratio)
+    ctx.env.recordRate("lactate_production", lactate_rate)
+    return {
+        "pyruvate": -actual_rate,
+        "lactate": lactate_rate,
+        "acetyl_coa": aerobic_rate,
+        "nadh": -lactate_rate * 0.5,
+        "nad_plus": lactate_rate * 0.5
+    }
 
 def fattyAcidSynthesis(ctx: Ctx) -> Dict[str, float]:
     insulin = ctx.env.getSignal("insulin")
@@ -300,20 +412,21 @@ def betaOxidation(ctx: Ctx) -> Dict[str, float]:
     nadh = ctx.env.getMetabolite("nadh")
     alcohol_inhibition = 0.6 if (etoh > 0.5) else 1.0
     rate = ctx.rate_modifier * alcohol_inhibition * (0.3 + 0.4 * max(glucagon, ep)) * min(fa, nad_plus)
-    if fa > 40.0:
+    if fa > 4.0:
         rate *= 2.0
-    elif fa > 20.0:
+    elif fa > 2.0:
         rate *= 1.5
     ctx.env.recordRate("betaOxidation", rate)
     return {"fatty_acid": -rate, "acetyl_coa": rate, "nadh": rate, "nad_plus": -rate, "atp": rate * 0.5}
 
 def deNovoLipogenesis(ctx: Ctx) -> Dict[str, float]:
+    # 脂质新生
     insulin = ctx.env.getSignal("insulin")
     ins_sens = ctx.env.getParameter("insulin_sensitivity")
     glucose = ctx.env.getMetabolite("glucose")
     atp = ctx.env.getMetabolite("atp")
     nadph = ctx.env.getMetabolite("nadph")
-    excess = max(0.0, (glucose - 100.0) / 100.0)
+    excess = max(0.0, (glucose - 4.0) / 4.0)
     rate = ctx.rate_modifier * (0.02 + 0.08 * insulin * ins_sens) * excess * min(glucose, atp * 0.5, nadph * 0.5)
     ctx.env.recordRate("deNovoLipogenesis", rate)
     return {"glucose": -rate, "fatty_acid": rate, "atp": -rate * 0.2, "nadph": -rate * 0.5}
@@ -361,6 +474,7 @@ def oxidativePhosphorylation(ctx: Ctx) -> Dict[str, float]:
     return {"nadh": -rate, "nad_plus": rate, "oxygen": -rate * 0.5, "atp": rate, "adp": -rate}
 
 def ketogenesis(ctx: Ctx) -> Dict[str, float]:
+    # 酮体生成
     glucose = ctx.env.getMetabolite("glucose")
     acetyl = ctx.env.getMetabolite("acetyl_coa")
     glucagon = ctx.env.getSignal("glucagon")
@@ -525,58 +639,125 @@ def coagulationFactorSynthesis(ctx: Ctx) -> Dict[str, float]:
     return {"amino_acid": -rate, "clotting_factor": rate, "atp": -rate * 0.1}
 
 def orchestrateGlycogenSynthesis(ctx: Ctx) -> Dict[str, float]:
-    o1 = pgm_G6P_to_G1P(ctx)
-    o2 = udpGlucoseSynthesis(ctx)
-    o3 = glycogenSynthaseStep(ctx)
-    o4 = branchingEnzymeStep(ctx)
-    outputs = {}
-    for o in (o1, o2, o3, o4):
-        for k, v in o.items():
-            outputs[k] = outputs.get(k, 0.0) + v
-    ctx.write(outputs)
-    return outputs
+    # 糖原合成 - 修复震荡问题
+    ins = ctx.env.getSignal("insulin")
+    glc = ctx.env.getSignal("glucagon")
+    g6p = ctx.env.getMetabolite("g6p")
+    atp = ctx.env.getMetabolite("atp")
+    glycogen = ctx.env.getMetabolite("glycogen")
+    
+    # 调控逻辑：减少sigmoid陡峭度，添加滞后效应防止快速切换
+    # 使用更平缓的sigmoid函数 (-5.0 而不是 -10.0)
+    hormone_ratio = ins - glc
+    activation = 1.0 / (1.0 + np.exp(-5.0 * (hormone_ratio - 0.45)))
+    
+    # 添加糖原浓度反馈抑制：当糖原水平高时，抑制合成
+    glycogen_feedback = 1.0 / (1.0 + np.exp(3.0 * (glycogen - 600.0)))  # 600为抑制阈值
+    
+    # 动力学：依赖底物和能量，但降低最大速率
+    v_max = 0.3  # 从0.5降低到0.3
+    rate = v_max * (g6p / (g6p + 1.0)) * (atp / (atp + 0.5)) * activation * glycogen_feedback
+    
+    # 安全保护：单步不抽干，降低最大抽取比例
+    actual_rate = min(rate, g6p * 0.15, atp * 0.08)  # 降低抽取比例
+    
+    ctx.env.recordRate("glycogen_synthesis_total", actual_rate)
+    # 净反应：G6P + ATP -> Glycogen + ADP
+    return {
+        "g6p": -actual_rate,
+        "glycogen": actual_rate,
+        "atp": -actual_rate * 1.1, # 包含合成所需的 UTP/ATP 总能耗
+        "adp": actual_rate * 1.1
+    }
 
 def orchestrateGlycogenBreakdown(ctx: Ctx) -> Dict[str, float]:
-    o1 = glycogenPhosphorylaseStep(ctx)
-    o2 = debranchingEnzymeStep(ctx)
-    o3 = g1p_to_g6p(ctx)
+    # 糖原分解 - 修复震荡问题
+    ins = ctx.env.getSignal("insulin")
+    glc = ctx.env.getSignal("glucagon")
+    ep = ctx.env.getSignal("epinephrine")
+    glycogen = ctx.env.getMetabolite("glycogen")
+    g6p = ctx.env.getMetabolite("g6p")
+    
+    # 调控逻辑：使用更平缓的sigmoid，添加G6P反馈抑制
+    drive = max((glc - ins), ep)
+    # 使用更平缓的sigmoid函数 (-5.0 而不是 -10.0)
+    activation = 1.0 / (1.0 + np.exp(-5.0 * (drive - 0.45)))
+    
+    # 添加G6P反馈抑制：当G6P水平高时，抑制分解
+    g6p_feedback = 1.0 / (1.0 + np.exp(-2.0 * (g6p - 8.0)))  # 8为抑制阈值
+    
+    # 动力学：受限于糖原总量，降低最大速率
+    v_max = 0.3  # 从0.5降低到0.3
+    rate = v_max * (glycogen / (glycogen + 50.0)) * activation * g6p_feedback
+    
+    # 安全保护：降低最大分解比例
+    actual_rate = min(rate, glycogen * 0.04)  # 从0.05降低到0.04
+    
+    ctx.env.recordRate("glycogen_breakdown_total", actual_rate)
+    # 净反应：Glycogen -> G6P (简化掉中间的 G1P)
+    return {
+        "glycogen": -actual_rate,
+        "g6p": actual_rate
+    }
+
+def orchestrateGlycogen(ctx: Ctx) -> Dict[str, float]:
+    o1 = orchestrateGlycogenSynthesis(ctx)
+    o2 = orchestrateGlycogenBreakdown(ctx)
     outputs = {}
-    for o in (o1, o2, o3):
+    for o in (o1, o2):
         for k, v in o.items():
             outputs[k] = outputs.get(k, 0.0) + v
     ctx.write(outputs)
     return outputs
 
 def orchestrateGluconeogenesis(ctx: Ctx) -> Dict[str, float]:
-    lact = ctx.env.getMetabolite("lactate")
-    glyc = ctx.env.getMetabolite("glycerol")
-    aa = ctx.env.getMetabolite("amino_acid")
+    # 糖异生 - 修复震荡问题
+    ins = ctx.env.getSignal("insulin")
+    glc = ctx.env.getSignal("glucagon")
+    # 核心调控：使用更平缓的sigmoid函数防止快速切换
+    # 使用更平缓的sigmoid函数 (-3.0 而不是 -5.0)
+    activation = 1.0 / (1.0 + np.exp(-3.0 * (glc - ins - 0.8)))
+    # 只有当胰岛素极低且胰高血糖素高时，Vmax 才会释放，但降低最大速率
+    v_max = 0.2 * activation  # 从0.3降低到0.2
     atp = ctx.env.getMetabolite("atp")
-    glucagon = ctx.env.getSignal("glucagon")
-    etoh = ctx.env.getMetabolite("ethanol")
-    nadh = ctx.env.getMetabolite("nadh")
-    nadp = ctx.env.getMetabolite("nad_plus")
-    infl = ctx.env.getSignal("inflammation")
-    cort = ctx.env.getSignal("cortisol")
-    alcohol_inhibition = 0.5 if (etoh > 0.5) else 1.0
-    stress_gain = 1.0 + 0.7 * cort + 0.7 * infl
-    post = 1.0 if bool(ctx.env.getParameter("is_postprandial")) else 0.0
-    post_clamp = 0.7 if post > 0.0 else 1.0
-    rate = ctx.rate_modifier * post_clamp * alcohol_inhibition * stress_gain * (0.02 + 0.05 * glucagon) * min(lact + glyc + aa, atp * 0.5)
-    outputs = {"glucose": rate, "lactate": -rate * 0.4, "glycerol": -rate * 0.3, "amino_acid": -rate * 0.3, "atp": -rate * 0.2}
+    # 糖异生极其耗能，ATP 不足时必须熄火
+    atp_safety = max(0, (atp - 1.5) / 2.0)
+    rate = v_max * atp_safety * 0.8  # 添加0.8阻尼因子
+    outputs = {
+        "g6p": rate, 
+        "lactate": -rate * 0.4, 
+        "glycerol": -rate * 0.3, 
+        "amino_acid": -rate * 0.3, 
+        "atp": -rate * 2.0  # 真实生理：糖异生非常耗能
+    }
     ctx.write(outputs)
+    ctx.env.recordRate("orchestrateGluconeogenesis", rate)
     return outputs
 
 def orchestrateGlycolysis(ctx: Ctx) -> Dict[str, float]:
-    o1 = hexokinase_or_glucokinase(ctx)
-    o2 = glycolysis_middle_steps(ctx)
-    o3 = pyruvateKinase_step(ctx)
-    outputs = {}
-    for o in (o1, o2, o3):
-        for k, v in o.items():
-            outputs[k] = outputs.get(k, 0.0) + v
-    ctx.write(outputs)
-    return outputs
+    # 糖酵解 - 修复震荡问题
+    # 1. 计算抑制系数：使用更平缓的响应防止快速切换
+    ins = ctx.env.getSignal("insulin")
+    glc = ctx.env.getSignal("glucagon")
+    
+    # 使用更平缓的sigmoid函数 (1.5 而不是 2.0)
+    inhibition = 0.8 / (1.0 + np.exp(1.5 * (glc - ins - 0.5))) + 0.2
+    
+    # 2. 收集所有子反应结果
+    res1 = hexokinase_step(ctx)
+    res2 = pfk1_step(ctx)
+    res3 = pyruvate_kinase_step(ctx)
+    res4 = pyruvate_destination_logic(ctx)
+    
+    # 3. 汇总所有变化，添加平滑因子防止快速震荡
+    combined = {}
+    for res in [res1, res2, res3, res4]:
+        for k, v in res.items():
+            combined[k] = combined.get(k, 0.0) + v * inhibition * 0.9  # 添加0.9平滑因子
+    
+    # 4. 统一写入环境
+    ctx.write(combined)
+    return combined
 
 def orchestrateLipidMetabolism(ctx: Ctx) -> Dict[str, float]:
     insulin = ctx.env.getSignal("insulin")
@@ -651,14 +832,17 @@ def orchestrateAminoAcidMetabolism(ctx: Ctx) -> Dict[str, float]:
     return outputs
 
 def orchestrateEnergyHomeostasis(ctx: Ctx) -> Dict[str, float]:
+    outputs = {}
+    # 1. 氧化磷酸化是 ATP 的核心来源，必须始终运行
+    ox = oxidativePhosphorylation(ctx)
+    for k, v in ox.items(): outputs[k] = outputs.get(k, 0.0) + v
+    # 2. 酮体生成是“备用电源”，仅在血糖低时激活，但不应切断主电源
     glucose = ctx.env.getMetabolite("glucose")
-    if glucose < 70.0:
-        o = ketogenesis(ctx)
-        ctx.write(o)
-        return o
-    o = oxidativePhosphorylation(ctx)
-    ctx.write(o)
-    return o
+    if glucose < 4.5: # 稍微提高触发阈值，但采用累加逻辑
+        keto = ketogenesis(ctx)
+        for k, v in keto.items(): outputs[k] = outputs.get(k, 0.0) + v
+    ctx.write(outputs)
+    return outputs
 
 def orchestrateNADHomeostasis(ctx: Ctx) -> Dict[str, float]:
     outputs = {}
@@ -717,17 +901,34 @@ def orchestrateSynthesisSecretion(ctx: Ctx) -> Dict[str, float]:
     return outputs
 
 def signalDegradationModule(ctx: Ctx) -> Dict[str, float]:
-    degradeInsulin(ctx)
-    degradeGlucagon(ctx)
-    inactivateCatecholamines(ctx)
-    return {}
+    o1 = degradeInsulin(ctx)
+    o2 = degradeGlucagon(ctx)
+    o3 = inactivateCatecholamines(ctx)
+    signals = {}
+    for o in (o1, o2, o3):
+        for k, v in o.get("signals", {}).items():
+            signals[k] = signals.get(k, 0.0) + v
+    return {"signals": signals}
 
 def orchestrateSystemSignals(ctx: Ctx) -> Dict[str, float]:
-    hormoneSignalTransduction(ctx)
-    neuralSignalIntegration(ctx)
-    immuneSignalInteraction(ctx)
-    signalDegradationModule(ctx)
-    return {}
+    o1 = hormoneSignalTransduction(ctx)
+    o2 = neuralSignalIntegration(ctx)
+    o3 = immuneSignalInteraction(ctx)
+    o4 = signalDegradationModule(ctx)
+    signals = {}
+    parameters = {}
+    for o in (o1, o2, o3, o4):
+        for k, v in o.get("signals", {}).items():
+            signals[k] = signals.get(k, 0.0) + v
+        for k, v in o.get("parameters", {}).items():
+            parameters[k] = parameters.get(k, 0.0) + v
+    for s, dv in signals.items():
+        cur = ctx.env.getSignal(s)
+        ctx.env.setSignal(s, cur + dv)
+    for p, dv in parameters.items():
+        cur = ctx.env.getParameter(p)
+        ctx.env.setParameter(p, cur + dv)
+    return {"signals": signals, "parameters": parameters}
 
 def orchestrateNADHomeostasis(ctx: Ctx) -> Dict[str, float]:
     o1 = nampt_Salvage(ctx)
@@ -745,13 +946,6 @@ def applyEnergyDeficitPolicies(ctx: Ctx) -> None:
     nadh = ctx.env.getMetabolite("nadh")
     nadp = ctx.env.getMetabolite("nad_plus")
     etoh = ctx.env.getMetabolite("ethanol")
-    # if atp < 30.0:
-    #     ctx.applyAction("downscale_rates", 0.3)
-    # else:
-    #     ctx.applyAction("downscale_rates", 1.0)
-    # if etoh > 0.5 or (nadp > 0.0 and (nadh / (nadp + 1e-6)) > 1.5):
-    #     ctx.applyAction("downscale_rates", ctx.rate_modifier * 0.7)
-
     # 生理 ATP 正常在 2-5 之间，低于 1.5 才算危机
     if atp < 1.5: 
         ctx.applyAction("downscale_rates", 0.3)
@@ -761,52 +955,54 @@ def applyEnergyDeficitPolicies(ctx: Ctx) -> None:
     if etoh > 0.1: 
         ctx.applyAction("downscale_rates", ctx.rate_modifier * 0.8)
 
-def hormoneSignalTransduction(ctx: Ctx) -> Dict[str, float]:
+def update_hormones(ctx: Ctx) -> Dict[str, Dict[str, float]]:
     glucose = ctx.env.getMetabolite("glucose")
-    post = 1.0 if bool(ctx.env.getParameter("is_postprandial")) else 0.0
-    # insulin = (2.0 / (1.0 + np.exp(-0.08 * (glucose - 95.0)))) * (1.0 + 0.5 * post)
-    # glucagon = (1.2 / (1.0 + np.exp(0.12 * (glucose - 90.0)))) * (1.0 - 0.6 * post)
-    # 将 95.0 改为生理中值 5.0 (mmol/L)
-    insulin = (2.0 / (1.0 + np.exp(-2.0 * (glucose - 5.0)))) 
-    glucagon = (1.2 / (1.0 + np.exp(2.0 * (glucose - 4.5))))
-    ctx.env.setSignal("insulin", insulin)
-    ctx.env.setSignal("glucagon", glucagon)
-    return {}
+    # --- 胰岛素 (Insulin) ---
+    # 使用更平缓的响应曲线，减少震荡
+    target_insulin = 0.05 + 0.95 * (glucose / (glucose + 8.0))  # 从5.0增加到8.0，更平缓
+    
+    # --- 胰高血糖素 (Glucagon) ---
+    # 使用更平缓的响应曲线
+    target_glucagon = 0.05 + 0.85 * (1.0 / (glucose + 1.0))  # 从0.4/0.9改为1.0/0.85，更平缓
+
+    current_ins = ctx.env.getSignal("insulin")
+    current_glc = ctx.env.getSignal("glucagon")
+    # 降低响应速度，减少快速震荡
+    secretion_ins = max(0, (target_insulin - current_ins) * 0.05)  # 从0.1降低到0.05
+    secretion_glc = max(0, (target_glucagon - current_glc) * 0.05)  # 从0.1降低到0.05
+    return {"signals": {"insulin": secretion_ins, "glucagon": secretion_glc}}
+
+def hormoneSignalTransduction(ctx: Ctx) -> Dict[str, float]:
+    return update_hormones(ctx)
 
 def neuralSignalIntegration(ctx: Ctx) -> Dict[str, float]:
     ep = ctx.env.getSignal("epinephrine")
-    ep = min(max(ep, 0.05), 2.0)
-    ctx.env.setSignal("epinephrine", ep)
-    return {}
+    new_ep = min(max(ep, 0.05), 2.0)
+    return {"signals": {"epinephrine": new_ep - ep}}
 
 def immuneSignalInteraction(ctx: Ctx) -> Dict[str, float]:
     infl = ctx.env.getSignal("inflammation")
-    infl = max(infl - 0.001, 0.0)
-    ctx.env.setSignal("inflammation", infl)
-    sens = max(0.5, 1.0 - 0.5 * infl)
-    ctx.env.setParameter("insulin_sensitivity", sens)
-    return {}
+    new_infl = max(infl - 0.001, 0.0)
+    sens = ctx.env.getParameter("insulin_sensitivity")
+    new_sens = max(0.5, 1.0 - 0.5 * new_infl)
+    return {"signals": {"inflammation": new_infl - infl}, "parameters": {"insulin_sensitivity": new_sens - sens}}
 
 def degradeInsulin(ctx: Ctx) -> Dict[str, float]:
     ide = ctx.env.getParameter("insulin_degrading_enzyme_activity")
     ins = ctx.env.getSignal("insulin")
-    # 增加降解速率，使其与IDE活性更相关
     degradation_rate = 0.02 * ide * ins
-    ins = max(ins - degradation_rate, 0.0)
-    ctx.env.setSignal("insulin", ins)
-    return {}
+    new_ins = max(ins - degradation_rate, 0.0)
+    return {"signals": {"insulin": new_ins - ins}}
 
 def degradeGlucagon(ctx: Ctx) -> Dict[str, float]:
     gl = ctx.env.getSignal("glucagon")
-    gl = max(gl - 0.01, 0.0)
-    ctx.env.setSignal("glucagon", gl)
-    return {}
+    new_gl = max(gl - 0.01, 0.0)
+    return {"signals": {"glucagon": new_gl - gl}}
 
 def inactivateCatecholamines(ctx: Ctx) -> Dict[str, float]:
     ep = ctx.env.getSignal("epinephrine")
-    ep = max(ep - 0.01, 0.0)
-    ctx.env.setSignal("epinephrine", ep)
-    return {}
+    new_ep = max(ep - 0.01, 0.0)
+    return {"signals": {"epinephrine": new_ep - ep}}
 
 class LiverMetabolismSystem:
     def __init__(self, env: MetabolicEnvironment):
@@ -819,22 +1015,19 @@ class LiverMetabolismSystem:
         rctx = Ctx(renv)
         orchestrateSystemSignals(rctx)
         applyEnergyDeficitPolicies(rctx)
-        insulin = rctx.env.getSignal("insulin")
-        glucagon = rctx.env.getSignal("glucagon")
-        glyco_task = orchestrateGlycogenSynthesis if insulin > glucagon else orchestrateGlycogenBreakdown
         tasks = [
-            orchestrateNADHomeostasis,
-            orchestrateEnergyHomeostasis,
-            cytosolicATPase_load,
             orchestrateGlycolysis,
             orchestrateGluconeogenesis,
-            orchestrateLipidMetabolism,
-            orchestrateAminoAcidMetabolism,
-            glyco_task,
-            orchestrateUreaCycle,
-            orchestrateSynthesisSecretion,
-            orchestrateDetoxification,
+            g6pase_G6P_to_Glucose,
+            orchestrateGlycogen,
+            orchestrateEnergyHomeostasis,
             orchestrateNADHomeostasis,
+            cytosolicATPase_load,
+            orchestrateLipidMetabolism,
+            # orchestrateAminoAcidMetabolism,
+            # orchestrateUreaCycle,
+            # orchestrateSynthesisSecretion,
+            # orchestrateDetoxification,
         ]
         with ThreadPoolExecutor(max_workers=len(tasks)) as ex:
             futs = [ex.submit(fn, rctx) for fn in tasks]
