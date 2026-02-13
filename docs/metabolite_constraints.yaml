@@ -1,0 +1,242 @@
+metabolites:
+  - name: "Glucose"
+    variable_names: ["glucose", "glc"]
+    normal_range:
+      min: 0.5
+      max: 5.0
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: true
+    confidence: "high"
+    rationale: "Hepatocytes maintain intracellular glucose levels relative to plasma via GLUT2; levels drop during fasting but are maintained by gluconeogenesis."
+
+  - name: "Glycogen"
+    variable_names: ["glycogen"]
+    normal_range:
+      min: 100.0
+      max: 500.0
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: true
+    confidence: "high"
+    rationale: "Measured as glycosyl units; varies significantly between fed (high) and fasted (low) states."
+
+  - name: "Fatty Acids"
+    variable_names: ["fatty_acid", "ffa", "palmitate"]
+    normal_range:
+      min: 0.1
+      max: 1.0
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: true
+    confidence: "medium"
+    rationale: "Intracellular free fatty acids are kept low to avoid lipotoxicity; levels increase during fasting due to lipolysis."
+
+  - name: "Triglycerides"
+    variable_names: ["triglycerides", "tg", "tag"]
+    normal_range:
+      min: 2.0
+      max: 15.0
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: true
+    confidence: "high"
+    rationale: "Stored in lipid droplets; hepatic TG content increases after meals and in metabolic syndrome."
+
+  - name: "Amino Acids (Total)"
+    variable_names: ["amino_acid", "aa"]
+    normal_range:
+      min: 20.0
+      max: 40.0
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: true
+    confidence: "medium"
+    rationale: "Total pool of free amino acids in the cytosol; highly regulated by protein turnover and dietary intake."
+
+  - name: "Ammonia"
+    variable_names: ["ammonia", "nh3", "nh4"]
+    normal_range:
+      min: 0.2
+      max: 0.7
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: false
+    confidence: "medium"
+    rationale: "Intracellular ammonia is higher than plasma due to amino acid deamination; kept low by the urea cycle."
+
+  - name: "Urea"
+    variable_names: ["urea"]
+    normal_range:
+      min: 3.0
+      max: 8.0
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: false
+    confidence: "high"
+    rationale: "Produced in the liver; equilibrates rapidly across membranes with plasma levels."
+
+  - name: "Ketone Bodies"
+    variable_names: ["ketone_body", "acetoacetate", "bhb"]
+    normal_range:
+      min: 0.05
+      max: 3.0
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: true
+    confidence: "high"
+    rationale: "Synthesis increases significantly during fasting or low-carb states (ketogenesis)."
+
+  - name: "ATP"
+    variable_names: ["atp"]
+    normal_range:
+      min: 2.0
+      max: 5.0
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: false
+    confidence: "high"
+    rationale: "Highly defended homeostatic concentration in active metabolic cells like hepatocytes."
+
+  - name: "ADP"
+    variable_names: ["adp"]
+    normal_range:
+      min: 0.2
+      max: 0.8
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: false
+    confidence: "high"
+    rationale: "Lower than ATP; concentration determined by energy charge (ATP/ADP ratio)."
+
+  - name: "AMP"
+    variable_names: ["amp"]
+    normal_range:
+      min: 10.0
+      max: 50.0
+    unit: "μM"
+    order_of_magnitude: "μM"
+    feeding_state_sensitive: false
+    confidence: "medium"
+    rationale: "Low absolute concentration; sensitive signal for cellular energy status via AMPK."
+
+  - name: "NAD+"
+    variable_names: ["nad_plus", "nad"]
+    normal_range:
+      min: 0.4
+      max: 0.8
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: false
+    confidence: "medium"
+    rationale: "Major oxidizing cofactor in the cytosol; total pool is relatively stable."
+
+  - name: "NADH"
+    variable_names: ["nadh"]
+    normal_range:
+      min: 1.0
+      max: 10.0
+    unit: "μM"
+    order_of_magnitude: "μM"
+    feeding_state_sensitive: true
+    confidence: "low"
+    rationale: "Most NADH is protein-bound; free cytosolic NADH is very low and increases during alcohol metabolism."
+
+  - name: "Indirect Bilirubin"
+    variable_names: ["indirect_bilirubin", "unconjugated_bilirubin"]
+    normal_range:
+      min: 5.0
+      max: 15.0
+    unit: "μM"
+    order_of_magnitude: "μM"
+    feeding_state_sensitive: false
+    confidence: "medium"
+    rationale: "Taken up from blood; rapidly conjugated by UGT1A1."
+
+  - name: "Direct Bilirubin"
+    variable_names: ["direct_bilirubin", "conjugated_bilirubin"]
+    normal_range:
+      min: 1.0
+      max: 5.0
+    unit: "μM"
+    order_of_magnitude: "μM"
+    feeding_state_sensitive: false
+    confidence: "medium"
+    rationale: "Product of conjugation; actively secreted into bile canaliculi."
+
+  - name: "UDP-Glucuronic Acid"
+    variable_names: ["udpga"]
+    normal_range:
+      min: 0.2
+      max: 0.5
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: true
+    confidence: "medium"
+    rationale: "Essential cofactor for Phase II conjugation; derived from glycogen/glucose."
+
+  - name: "PAPS"
+    variable_names: ["paps"]
+    normal_range:
+      min: 20.0
+      max: 50.0
+    unit: "μM"
+    order_of_magnitude: "μM"
+    feeding_state_sensitive: false
+    confidence: "medium"
+    rationale: "Sulfation donor; intracellular pool is small and can be depleted by high xenobiotic load."
+
+  - name: "Glutathione"
+    variable_names: ["gsh"]
+    normal_range:
+      min: 5.0
+      max: 10.0
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: false
+    confidence: "high"
+    rationale: "Major intracellular antioxidant; liver has the highest concentration in the body."
+
+  - name: "Ethanol"
+    variable_names: ["ethanol"]
+    normal_range:
+      min: 0.0
+      max: 0.1
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: false
+    confidence: "high"
+    rationale: "Baseline level is near zero; significantly increases only after exogenous intake."
+
+  - name: "Acetaldehyde"
+    variable_names: ["acetaldehyde"]
+    normal_range:
+      min: 0.1
+      max: 2.0
+    unit: "μM"
+    order_of_magnitude: "μM"
+    feeding_state_sensitive: false
+    confidence: "medium"
+    rationale: "Highly toxic intermediate of ethanol metabolism; rapidly oxidized to acetate."
+
+  - name: "Acetate"
+    variable_names: ["acetate"]
+    normal_range:
+      min: 0.1
+      max: 0.5
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: false
+    confidence: "medium"
+    rationale: "Product of acetaldehyde oxidation; enters TCA cycle or is released into circulation."
+
+  - name: "Albumin"
+    variable_names: ["albumin"]
+    normal_range:
+      min: 0.05
+      max: 0.2
+    unit: "mM"
+    order_of_magnitude: "mM"
+    feeding_state_sensitive: true
+    confidence: "medium"
+    rationale: "Major protein synthesized in hepatocytes; intracellular concentration reflects balance between synthesis and secretion."
