@@ -1027,7 +1027,7 @@ class LiverMetabolismSystem:
             # orchestrateAminoAcidMetabolism,
             # orchestrateUreaCycle,
             # orchestrateSynthesisSecretion,
-            # orchestrateDetoxification,
+            orchestrateDetoxification,
         ]
         with ThreadPoolExecutor(max_workers=len(tasks)) as ex:
             futs = [ex.submit(fn, rctx) for fn in tasks]

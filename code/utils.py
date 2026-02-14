@@ -168,16 +168,16 @@ def generate_dashboard(history_list, filename="dashboard.html", concentrations=N
     base = os.path.splitext(os.path.basename(filename))[0]
     
     rate_cols = [c for c in df.columns if c.startswith("rate_")]
-    pd.DataFrame({"time": df["time"], **{c: df[c] for c in rate_cols}}).to_csv(os.path.join(outdir, f"{base}_rates.csv"), index=False)
+    pd.DataFrame({"time": df["time"], **{c: df[c] for c in rate_cols}}).to_csv(os.path.join(f'{outdir}/csv', f"{base}_rates.csv"), index=False)
     
     signals = {"insulin", "glucagon", "epinephrine", "cortisol", "inflammation"}
     params = {"oxygen_pressure", "pH", "temperature", "is_postprandial", "insulin_degrading_enzyme_activity", "liver_function", "xenobiotic_load", "insulin_sensitivity", "aldh_activity"}
     metabolite_cols = [c for c in df.columns if c not in signals and c not in params and not c.startswith("rate_") and c != "time"]
-    pd.DataFrame({"time": df["time"], **{c: df[c] for c in metabolite_cols}}).to_csv(os.path.join(outdir, f"{base}_metabolites.csv"), index=False)
+    pd.DataFrame({"time": df["time"], **{c: df[c] for c in metabolite_cols}}).to_csv(os.path.join(f'{outdir}/csv', f"{base}_metabolites.csv"), index=False)
     
     # 震荡检测
     osc_df = detect_rate_oscillations(df)
-    osc_df.to_csv(os.path.join(outdir, f"{base}_oscillations.csv"), index=False)
+    osc_df.to_csv(os.path.join(f'{outdir}/csv', f"{base}_oscillations.csv"), index=False)
     
     flagged = osc_df[osc_df["oscillatory"] == True]
     if len(flagged) > 0:
