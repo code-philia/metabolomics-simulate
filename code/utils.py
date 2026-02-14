@@ -3,6 +3,54 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from test_cases import get_all_tests
+
+def run_metabolic_tests(history, title="代谢约束测试结果"):
+    """
+    运行所有代谢物约束测试并输出汇总结果
+    """
+    tests = get_all_tests()
+    results = []
+    
+    passed_count = 0
+    failed_count = 0
+    skipped_count = 0
+    
+    print(f"\n{'='*20} {title} {'='*20}")
+    
+    for name, test_func in tests.items():
+        res, reason = test_func(history)
+        if res is True:
+            passed_count += 1
+            results.append({"name": name, "status": "PASS", "reason": reason})
+        elif res is False:
+            failed_count += 1
+            results.append({"name": name, "status": "FAIL", "reason": reason})
+        else:
+            skipped_count += 1
+            # results.append({"name": name, "status": "SKIP", "reason": reason})
+            
+    total_active = passed_count + failed_count
+    pass_rate = (passed_count / total_active * 100) if total_active > 0 else 0
+    
+    print(f"总计: {total_active} 个代谢物已定义变量, {skipped_count} 个未在模拟中定义。")
+    print(f"通过率: {pass_rate:.1f}% ({passed_count}/{total_active})")
+    
+    if failed_count > 0:
+        print("\n未通过的项目详情:")
+        for r in results:
+            if r["status"] == "FAIL":
+                print(f"  - [{r['name']}]: {r['reason']}")
+    else:
+        print("\n所有已定义变量的代谢物均符合约束。")
+        
+    print(f"{'='*50}\n")
+    return {
+        "pass_rate": pass_rate,
+        "passed": passed_count,
+        "failed": failed_count,
+        "results": results
+    }
 
 def get_series(df, col):
     """从 DataFrame 中获取列，如果不存在则返回全 0 的 Series"""

@@ -1,5 +1,5 @@
 import os
-from utils import run_metabolic_simulation, generate_dashboard
+from utils import run_metabolic_simulation, generate_dashboard, run_metabolic_tests
 
 # --- 可视化配置 ---
 # 格式: (代谢物名, 显示标签, 颜色, 是否使用次坐标轴)
@@ -62,6 +62,10 @@ def setup_nafld_case(env, system, hour, minute):
 if __name__ == "__main__":
     # 1. 运行正常场景模拟
     hist_normal = run_metabolic_simulation(setup_normal_case, hours=8)
+    
+    # 运行约束测试
+    run_metabolic_tests(hist_normal, title="正常场景 - 代谢约束测试")
+
     generate_dashboard(
         hist_normal, 
         "../results/results-html/nafld_normal.html",
@@ -70,8 +74,9 @@ if __name__ == "__main__":
         dashboard_title="肝脏代谢模拟 - 正常场景"
     )
     
-    # 2. 运行 NAFLD 场景模拟 (根据原本代码注释掉的部分，如果需要可以开启)
+    # 2. 运行 NAFLD 场景模拟
     # hist_nafld = run_metabolic_simulation(setup_nafld_case, hours=24)
+    # run_metabolic_tests(hist_nafld, title="NAFLD 场景 - 代谢约束测试")
     # generate_dashboard(
     #     hist_nafld, 
     #     "../results/results-html/nafld_abnormal.html",
