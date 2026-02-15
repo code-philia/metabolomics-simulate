@@ -199,6 +199,13 @@ class ResourceEnv(MetabolicEnvironment):
     def recordRate(self, name: str, rate: float) -> None:
         self.pool.record_rate(name, rate)
 
+def oxygen_supply(ctx: Ctx) -> Dict[str, float]:
+    current_o2 = ctx.env.getMetabolite("oxygen")
+    target_o2 = 5.0  # 假设正常肝脏氧浓度水平
+    # 模拟从血液扩散，浓度越低补充越快
+    supply_rate = 0.5 * (target_o2 - current_o2) 
+    return {"oxygen": supply_rate}
+
 def hexokinase_step(ctx: Ctx) -> Dict[str, float]:
     glucose = ctx.env.getMetabolite("glucose")
     atp = ctx.env.getMetabolite("atp")
@@ -389,29 +396,38 @@ def pyruvate_destination_logic(ctx: Ctx) -> Dict[str, float]:
         "pyruvate": -actual_rate,
         "lactate": lactate_rate,
         "acetyl_coa": aerobic_rate,
-        "nadh": -lactate_rate * 0.5,
-        "nad_plus": lactate_rate * 0.5
+        "nadh": -lactate_rate,# * 0.5,
+        "nad_plus": lactate_rate# * 0.5 必须为1倍，与PK步的消耗平衡
     }
 
 def fattyAcidSynthesis(ctx: Ctx) -> Dict[str, float]:
     insulin = ctx.env.getSignal("insulin")
+    glucagon = ctx.env.getSignal("glucagon")
     ins_sens = ctx.env.getParameter("insulin_sensitivity")
     acetyl = ctx.env.getMetabolite("acetyl_coa")
     nadph = ctx.env.getMetabolite("nadph")
     atp = ctx.env.getMetabolite("atp")
-    rate = ctx.rate_modifier * (0.01 + 0.05 * insulin * ins_sens) * min(acetyl, nadph * 0.5, atp * 0.5)
+    fa = ctx.env.getMetabolite("fatty_acid")
+    lipogenesis_act = 1.0 / (1.0 + np.exp(-3.0 * (insulin - glucagon - 0.2)))
+    synth_avail = 1.0 / (1.0 + np.exp(-3.0 * (1.0 - fa)))
+    base = ctx.rate_modifier * (0.01 + 0.05 * insulin * ins_sens) * min(acetyl, nadph * 0.5, atp * 0.5)
+    rate = base * lipogenesis_act * synth_avail * 0.8
     ctx.env.recordRate("fattyAcidSynthesis", rate)
     return {"acetyl_coa": -rate, "fatty_acid": rate, "nadph": -rate * 0.5, "atp": -rate * 0.2, "adp": rate * 0.2}
 
 def betaOxidation(ctx: Ctx) -> Dict[str, float]:
     glucagon = ctx.env.getSignal("glucagon")
+    insulin = ctx.env.getSignal("insulin")
     ep = ctx.env.getSignal("epinephrine")
     fa = ctx.env.getMetabolite("fatty_acid")
     nad_plus = ctx.env.getMetabolite("nad_plus")
     etoh = ctx.env.getMetabolite("ethanol")
     nadh = ctx.env.getMetabolite("nadh")
     alcohol_inhibition = 0.6 if (etoh > 0.5) else 1.0
-    rate = ctx.rate_modifier * alcohol_inhibition * (0.3 + 0.4 * max(glucagon, ep)) * min(fa, nad_plus)
+    oxidation_act = 1.0 / (1.0 + np.exp(-3.0 * (glucagon - insulin - 0.2)))
+    fa_supply = max(0.0, min(1.0, (fa - 0.3) / 2.0))
+    base = ctx.rate_modifier * alcohol_inhibition * (0.3 + 0.4 * max(glucagon, ep)) * min(fa, nad_plus)
+    rate = base * oxidation_act * max(0.3, fa_supply) * 1.2
     if fa > 4.0:
         rate *= 2.0
     elif fa > 2.0:
@@ -420,34 +436,49 @@ def betaOxidation(ctx: Ctx) -> Dict[str, float]:
     return {"fatty_acid": -rate, "acetyl_coa": rate, "nadh": rate, "nad_plus": -rate, "atp": rate * 0.5, "adp": -rate * 0.5}
 
 def deNovoLipogenesis(ctx: Ctx) -> Dict[str, float]:
-    # 脂质新生
     insulin = ctx.env.getSignal("insulin")
+    glucagon = ctx.env.getSignal("glucagon")
     ins_sens = ctx.env.getParameter("insulin_sensitivity")
     glucose = ctx.env.getMetabolite("glucose")
     atp = ctx.env.getMetabolite("atp")
     nadph = ctx.env.getMetabolite("nadph")
+    fa = ctx.env.getMetabolite("fatty_acid")
     excess = max(0.0, (glucose - 4.0) / 4.0)
-    rate = ctx.rate_modifier * (0.02 + 0.08 * insulin * ins_sens) * excess * min(glucose, atp * 0.5, nadph * 0.5)
+    lipogenesis_act = 1.0 / (1.0 + np.exp(-3.0 * (insulin - glucagon - 0.2)))
+    synth_avail = 1.0 / (1.0 + np.exp(-3.0 * (1.0 - fa)))
+    base = ctx.rate_modifier * (0.02 + 0.08 * insulin * ins_sens) * excess * min(glucose, atp * 0.5, nadph * 0.5)
+    rate = base * lipogenesis_act * synth_avail * 0.8
     ctx.env.recordRate("deNovoLipogenesis", rate)
     return {"glucose": -rate, "fatty_acid": rate, "atp": -rate * 0.2, "adp": rate * 0.2, "nadph": -rate * 0.5}
 
 def lipidTransport(ctx: Ctx) -> Dict[str, float]:
     insulin = ctx.env.getSignal("insulin")
+    glucagon = ctx.env.getSignal("glucagon")
     ins_sens = ctx.env.getParameter("insulin_sensitivity")
     fa = ctx.env.getMetabolite("fatty_acid")
-    rate = ctx.rate_modifier * (0.01 + 0.05 * insulin * ins_sens) * min(fa, 5.0)
+    tg = ctx.env.getMetabolite("triglycerides")
+    lipogenesis_act = 1.0 / (1.0 + np.exp(-3.0 * (insulin - glucagon - 0.2)))
+    base = ctx.rate_modifier * (0.01 + 0.05 * insulin * ins_sens) * min(fa, 5.0)
+    rate = base * lipogenesis_act * 0.6
+    tg_clear = -ctx.rate_modifier * 1.5 if tg > 1.5 * 1.8 else 0.0
     ctx.env.recordRate("lipidTransport", rate)
-    return {"fatty_acid": -rate * 0.7, "triglycerides": rate}
+    return {"fatty_acid": -rate * 0.7, "triglycerides": rate + tg_clear}
 
 def adiposeLipolysis(ctx: Ctx) -> Dict[str, float]:
     insulin = ctx.env.getSignal("insulin")
     glucagon = ctx.env.getSignal("glucagon")
     ep = ctx.env.getSignal("epinephrine")
+    fa = ctx.env.getMetabolite("fatty_acid")
+    oxidation_act = 1.0 / (1.0 + np.exp(-3.0 * (glucagon - insulin - 0.2)))
     drive = max(glucagon - insulin, 0.0) + ep * 1.0
     low_ins_boost = 0.5 if insulin < 0.2 else 0.0
-    rate = ctx.rate_modifier * (0.02 + 0.05 * (drive + low_ins_boost)) * 3.0
+    base = ctx.rate_modifier * (0.02 + 0.05 * (drive + low_ins_boost)) * 3.0
+    rate = base * oxidation_act * 0.7
     ctx.env.recordRate("adiposeLipolysis", rate)
-    return {"fatty_acid": rate * 0.8, "glycerol": rate * 0.2}
+    fa_out = rate * 0.8
+    if fa >= 1.5:
+        fa_out *= 0.02
+    return {"fatty_acid": fa_out, "glycerol": rate * 0.2}
 
 def aminoAcidCatabolism(ctx: Ctx) -> Dict[str, float]:
     aa = ctx.env.getMetabolite("amino_acid")
@@ -491,14 +522,33 @@ def ketogenesis(ctx: Ctx) -> Dict[str, float]:
 def lactateFermentation(ctx: Ctx) -> Dict[str, float]:
     pyr = ctx.env.getMetabolite("pyruvate")
     nadh = ctx.env.getMetabolite("nadh")
-    nadp = ctx.env.getMetabolite("nad_plus")
+    nad_plus = ctx.env.getMetabolite("nad_plus")
     oxygen = ctx.env.getMetabolite("oxygen")
-    deficit = 1.0 if (nadp < 15.0 or (nadh / (nadp + 1e-6)) > 2.0) else 0.0
-    hypox = 1.0 if oxygen < 40.0 else 0.0
-    trig = max(deficit, hypox)
-    rate = ctx.rate_modifier * trig * min(pyr + 0.5, nadh) * 0.08
-    ctx.env.recordRate("lactateFermentation", rate)
-    return {"pyruvate": -rate, "lactate": rate, "nadh": -rate, "nad_plus": rate}
+    # --- 改进 1: 缺氧触发器逻辑 ---
+    # 使用平滑的 S 曲线：氧气越低，hypox_factor 越接近 1.0
+    # 当 oxygen = 40 时，factor 约为 0.5；当 oxygen < 20 时，迅速升至接近 1.0
+    hypox_factor = 1.0 / (1.0 + np.exp(0.2 * (oxygen - 30.0)))
+    # --- 改进 2: 氧化还原压力触发器 ---
+    # 如果 NADH/NAD+ 比例失衡（例如大于 0.1），也应触发回收机制
+    redox_ratio = nadh / (nad_plus + 1e-6)
+    redox_factor = redox_ratio / (redox_ratio + 0.1) # 比例越高，系数越接近 1
+    # 综合触发强度
+    trig = max(hypox_factor, redox_factor)
+    # --- 改进 3: 动力学计算 ---
+    # v_max 适当调高，确保在危急时刻能快速回收 NAD+
+    # 增加对丙酮酸的米氏常数限制，防止在丙酮酸几乎为 0 时过度抽取
+    v_max = 0.5 
+    potential_rate = v_max * (pyr / (pyr + 0.5)) * (nadh / (nadh + 0.2)) * trig
+    # 安全限制：单步不要消耗超过当前丙酮酸或 NADH 的 30%
+    actual_rate = potential_rate * min(1.0, (pyr * 0.3) / (potential_rate + 1e-6), (nadh * 0.3) / (potential_rate + 1e-6))
+    ctx.env.recordRate("lactateFermentation", actual_rate)
+    # 确保 1:1 回收
+    return {
+        "pyruvate": -actual_rate,
+        "lactate": actual_rate,
+        "nadh": -actual_rate,
+        "nad_plus": actual_rate
+    }
 
 def nampt_Salvage(ctx: Ctx) -> Dict[str, float]:
     nam = ctx.env.getMetabolite("nicotinamide")
@@ -764,64 +814,11 @@ def orchestrateGlycolysis(ctx: Ctx) -> Dict[str, float]:
     return combined
 
 def orchestrateLipidMetabolism(ctx: Ctx) -> Dict[str, float]:
-    insulin = ctx.env.getSignal("insulin")
-    glucagon = ctx.env.getSignal("glucagon")
-    triglycerides = ctx.env.getMetabolite("triglycerides")
-    fatty_acid = ctx.env.getMetabolite("fatty_acid")
-    post = bool(ctx.env.getParameter("is_postprandial"))
-    initial_triglycerides = 1.5  # 初始甘油三酯浓度 (调整为 1.5)
-    
     outputs = {}
-    
-    # 无论胰岛素和胰高血糖素的水平如何，只要脂肪酸浓度较高，就执行beta氧化
-    # 降低阈值，确保脂肪酸能够被充分降解
-    if fatty_acid > 1.5:  # 降低阈值从 8.0 到 1.5
-        # 大幅增加beta氧化的速率，确保脂肪酸能够充分降解
-        o = betaOxidation(ctx)
-        for k, v in o.items():
-            outputs[k] = outputs.get(k, 0.0) + v * 4.0  # 大幅增加beta氧化的速率
-    
-    if insulin > glucagon:
-        # 当脂肪酸浓度较高时，完全停止脂肪酸合成
-        if fatty_acid < 1.5: # 降低阈值从 8.0 到 1.5
-            o = fattyAcidSynthesis(ctx)
-            dnl = deNovoLipogenesis(ctx)
-            for o_ in (o, dnl):
-                for k, v in o_.items():
-                    outputs[k] = outputs.get(k, 0.0) + v * 0.1  # 大幅减少脂肪酸合成的速率
-        
-        t = lipidTransport(ctx)
-        exo_tg = {}
-        if post:
-            ex_rate = ctx.rate_modifier * 0.4
-            exo_tg = {"triglycerides": ex_rate}
-        # 增加甘油三酯的输出，防止无限制增加
-        tg_output = {}
-        if triglycerides > initial_triglycerides * 1.6:
-            tg_output = {"triglycerides": -ctx.rate_modifier * 2.5}
-        for o_ in (t, exo_tg, tg_output):
-            for k, v in o_.items():
-                outputs[k] = outputs.get(k, 0.0) + v
-    else:
-        o = betaOxidation(ctx)
-        # 当脂肪酸浓度较高时，完全停止脂肪分解
-        if fatty_acid < 1.5: # 降低阈值从 8.0 到 1.5
-            lip = adiposeLipolysis(ctx)
-            # 大幅减少脂肪分解的速率
-            for k, v in lip.items():
-                if k == "fatty_acid":
-                    outputs[k] = outputs.get(k, 0.0) + v * 0.02  # 大幅减少脂肪分解产生的脂肪酸
-                else:
-                    outputs[k] = outputs.get(k, 0.0) + v
-        for k, v in o.items():
-            outputs[k] = outputs.get(k, 0.0) + v * 2.5  # 增加beta氧化的速率
-    
-    # 即使在餐后窗口期间，只要脂肪酸浓度较高，就增加beta氧化的速率
-    if post and fatty_acid > 1.5: # 降低阈值从 8.0 到 1.5
-        o = betaOxidation(ctx)
-        for k, v in o.items():
-            outputs[k] = outputs.get(k, 0.0) + v * 3.0  # 再次大幅增加beta氧化的速率
-    
+    for fn in (fattyAcidSynthesis, deNovoLipogenesis, lipidTransport, adiposeLipolysis, betaOxidation):
+        res = fn(ctx)
+        for k, v in res.items():
+            outputs[k] = outputs.get(k, 0.0) + v
     ctx.write(outputs)
     return outputs
 
@@ -838,9 +835,12 @@ def orchestrateAminoAcidMetabolism(ctx: Ctx) -> Dict[str, float]:
 def orchestrateEnergyHomeostasis(ctx: Ctx) -> Dict[str, float]:
     outputs = {}
     # 1. 氧化磷酸化是 ATP 的核心来源，必须始终运行
-    ox = oxidativePhosphorylation(ctx)
-    for k, v in ox.items(): outputs[k] = outputs.get(k, 0.0) + v
-    # 2. 酮体生成是“备用电源”，仅在血糖低时激活，但不应切断主电源
+    # 2. 氧气供应是补充氧气的主要来源
+    o1 = oxidativePhosphorylation(ctx)
+    o2 = oxygen_supply(ctx)
+    for o in (o1, o2):
+        for k, v in o.items(): outputs[k] = outputs.get(k, 0.0) + v
+    # 3. 酮体生成是“备用电源”，仅在血糖低时激活，但不应切断主电源
     glucose = ctx.env.getMetabolite("glucose")
     if glucose < 4.5: # 稍微提高触发阈值，但采用累加逻辑
         keto = ketogenesis(ctx)
@@ -933,17 +933,6 @@ def orchestrateSystemSignals(ctx: Ctx) -> Dict[str, float]:
         cur = ctx.env.getParameter(p)
         ctx.env.setParameter(p, cur + dv)
     return {"signals": signals, "parameters": parameters}
-
-def orchestrateNADHomeostasis(ctx: Ctx) -> Dict[str, float]:
-    o1 = nampt_Salvage(ctx)
-    o2 = deNovoNADSynthesis(ctx)
-    o3 = lactateFermentation(ctx)
-    outputs = {}
-    for o in (o1, o2, o3):
-        for k, v in o.items():
-            outputs[k] = outputs.get(k, 0.0) + v
-    ctx.write(outputs)
-    return outputs
 
 def applyEnergyDeficitPolicies(ctx: Ctx) -> None:
     atp = ctx.env.getMetabolite("atp")

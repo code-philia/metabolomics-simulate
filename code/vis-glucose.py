@@ -3,7 +3,7 @@ from utils import run_metabolic_simulation, generate_dashboard, run_metabolic_te
 
 # --- 可视化配置 ---
 # 格式: (代谢物名, 显示标签, 颜色, 是否使用次坐标轴)
-NAFLD_CONCENTRATIONS = [
+GLUCOSE_CONCENTRATIONS = [
     ('insulin', 'Insulin(胰岛素)', 'orange', False),
     ('glucagon', 'Glucagon(胰高血糖素)', 'violet', False),
     ('glucose', 'Glucose(葡萄糖)', 'royalblue', False),
@@ -12,6 +12,7 @@ NAFLD_CONCENTRATIONS = [
     ('pyruvate', 'Pyruvate(丙酮酸)', 'cyan', False),
     ('lactate', 'Lactate(乳酸)', 'teal', False),
     ('acetyl_coa', 'Acetyl-CoA', 'brown', False),
+    ('oxygen', 'Oxygen(氧气)', 'navy', False),
     ('atp', 'ATP', 'gold', False),
     ('adp', 'ADP', 'lightsalmon', False),
     ('nad_plus', 'NAD+', 'lightgreen', False),
@@ -21,7 +22,7 @@ NAFLD_CONCENTRATIONS = [
 ]
 
 # 格式: (反应速率名, 显示标签, 颜色)
-NAFLD_RATES = [
+GLUCOSE_RATES = [
     ('rate_hexokinase', '己糖激酶 (HK/GK) 反应', 'blue'),
     ('rate_pfk1', '磷酸果糖激酶-1 (PFK-1) 反应', 'lime'),
     ('rate_pyruvate_kinase', '丙酮酸激酶 (PK) 反应', 'red'),
@@ -30,7 +31,7 @@ NAFLD_RATES = [
     ('rate_orchestrateGluconeogenesis', '糖异生', 'purple'),
     ('rate_glycogen_synthesis_total', '糖原合成', 'lightgreen'),
     ('rate_glycogen_breakdown_total', '糖原分解', 'gold'),
-    ('rate_deNovoLipogenesis', '新生脂质合成', 'darkorange'),
+    ('rate_lactateFermentation', '乳酸发酵', 'darkorange'),
 ]
 
 # --- 模拟逻辑配置 ---
@@ -61,16 +62,16 @@ def setup_nafld_case(env, system, hour, minute):
 
 if __name__ == "__main__":
     # 1. 运行正常场景模拟
-    hist_normal = run_metabolic_simulation(setup_normal_case, hours=8)
+    hist_normal = run_metabolic_simulation(setup_normal_case, hours=15)
     
     # 运行约束测试
     run_metabolic_tests(hist_normal, title="正常场景 - 代谢约束测试")
 
     generate_dashboard(
         hist_normal, 
-        "../results/results-html/nafld_normal.html",
-        concentrations=NAFLD_CONCENTRATIONS,
-        rates=NAFLD_RATES,
+        "../results/results-html/glucose_normal.html",
+        concentrations=GLUCOSE_CONCENTRATIONS,
+        rates=GLUCOSE_RATES,
         dashboard_title="肝脏代谢模拟 - 正常场景"
     )
     
@@ -79,8 +80,8 @@ if __name__ == "__main__":
     # run_metabolic_tests(hist_nafld, title="NAFLD 场景 - 代谢约束测试")
     # generate_dashboard(
     #     hist_nafld, 
-    #     "../results/results-html/nafld_abnormal.html",
-    #     concentrations=NAFLD_CONCENTRATIONS,
-    #     rates=NAFLD_RATES,
-    #     dashboard_title="肝脏代谢模拟 - NAFLD 场景"
+    #     "../results/results-html/glucose_abnormal.html",
+    #     concentrations=GLUCOSE_CONCENTRATIONS,
+    #     rates=GLUCOSE_RATES,
+    #     dashboard_title="肝脏代谢模拟 - 异常场景"
     # )
