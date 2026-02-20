@@ -36,6 +36,7 @@ NAFLD_RATES = [
     ('rate_lipidTransport', '脂质运输', 'navy'),
     ('rate_adiposeLipolysis', '脂质分解', 'darkred'),
     ('rate_lactateFermentation', '乳酸发酵', 'darkgrey'),
+    ('rate_tca_cycle', 'TCA 循环', 'darkblue'),
     ('rate_oxidativePhosphorylation', '氧化磷酸化', 'lightsalmon'),
 ]
 
@@ -56,7 +57,7 @@ def setup_normal_case(env, system, hour, minute):
 
 if __name__ == "__main__":
     # 1. 运行正常场景模拟
-    hist_normal = run_metabolic_simulation(setup_normal_case, hours=18)
+    hist_normal = run_metabolic_simulation(setup_normal_case, hours=20)
     
     # 运行约束测试
     run_metabolic_tests(hist_normal, title="正常场景 - 代谢约束测试")

@@ -209,6 +209,7 @@ def generate_dashboard(history_list, filename="dashboard.html", concentrations=N
     outdir = os.path.dirname(filename) or "."
     if outdir:
         os.makedirs(outdir, exist_ok=True)
+        os.makedirs(os.path.join(outdir, "csv"), exist_ok=True)
     
     fig.write_html(filename)
     
@@ -252,6 +253,7 @@ def run_metabolic_simulation(setup_func, hours=24):
     minutes = int(hours * 60)
     for tt in range(minutes):
         hour = tt / 60.0
+        # print('[',hour,'h ]')
         setup_func(env, system, hour, tt)
         system.step(hour)
         

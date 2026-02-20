@@ -32,6 +32,8 @@ GLUCOSE_RATES = [
     ('rate_glycogen_synthesis_total', '糖原合成', 'lightgreen'),
     ('rate_glycogen_breakdown_total', '糖原分解', 'gold'),
     ('rate_lactateFermentation', '乳酸发酵', 'darkorange'),
+    ('rate_tca_cycle', 'TCA 循环', 'darkblue'),
+    ('rate_oxidativePhosphorylation', '氧化磷酸化', 'lightsalmon'),
 ]
 
 # --- 模拟逻辑配置 ---

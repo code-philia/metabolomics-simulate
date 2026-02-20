@@ -27,6 +27,14 @@ class MetabolicEnvironment:
             "urea": 4.0,               # 尿素氮 2.5-7.1 mmol/L
             "albumin": 0.12,            # 约 40g/L，换算摩尔浓度约为 0.6 mmol/L
             "clotting_factor": 1.0,    # 相对活性单位
+            "glutamine": 0.6,
+            "alanine": 0.2,
+            "alpha_keto_acid": 0.1,
+            "protein_store": 10.0,
+            "mem_rate_aa_catabolism": 0.0,
+            "mem_rate_glutamineShunt": 0.0,
+            "mem_rate_glucoseAlanineCycle": 0.0,
+            "mem_rate_ureaCycle": 0.0,
 
             # --- 能量与辅酶 (肝细胞内估计浓度 mmol/L) ---
             "atp": 3.5,                # 胞内 ATP 浓度 2-5 mmol/L
@@ -206,19 +214,6 @@ def oxygen_supply(ctx: Ctx) -> Dict[str, float]:
     supply_rate = 0.5 * (target_o2 - current_o2) 
     return {"oxygen": supply_rate}
 
-def hexokinase_step(ctx: Ctx) -> Dict[str, float]:
-    glucose = ctx.env.getMetabolite("glucose")
-    atp = ctx.env.getMetabolite("atp")
-    insulin = ctx.env.getSignal("insulin")
-    # 肝脏葡萄糖激酶 (GK) 的 Km 较高，受胰岛素高度诱导
-    v_max = 0.25  # 从 0.3 降低到 0.25
-    km_glucose = 5.0 
-    # 速率受血糖和胰岛素共同驱动
-    rate = v_max * (glucose / (glucose + km_glucose)) * (0.2 + 0.8 * insulin)
-    actual_rate = min(rate, glucose * 0.1, atp * 0.5)
-    ctx.env.recordRate("hexokinase", actual_rate)
-    return {"glucose": -actual_rate, "g6p": actual_rate, "atp": -actual_rate, "adp": actual_rate}
-
 def pgm_G6P_to_G1P(ctx: Ctx) -> Dict[str, float]:
     g6p = ctx.env.getMetabolite("g6p")
     ins = ctx.env.getSignal("insulin")
@@ -319,12 +314,6 @@ def g1p_to_g6p(ctx: Ctx) -> Dict[str, float]:
         "g6p": actual_rate
     }
 
-def pepck_OAA_to_PEP(ctx: Ctx) -> Dict[str, float]:
-    atp = ctx.env.getMetabolite("atp")
-    rate = ctx.rate_modifier * min(atp, 2.0) * 0.02
-    ctx.env.recordRate("pepck_OAA_to_PEP", rate)
-    return {"atp": -rate, "adp": rate}
-
 def g6pase_G6P_to_Glucose(ctx: Ctx) -> Dict[str, float]:
     g6p = ctx.env.getMetabolite("g6p")
     ins = ctx.env.getSignal("insulin")
@@ -338,6 +327,19 @@ def g6pase_G6P_to_Glucose(ctx: Ctx) -> Dict[str, float]:
     ctx.write(outputs)
     ctx.env.recordRate("g6pase_G6P_to_Glucose", rate)
     return outputs
+
+def hexokinase_step(ctx: Ctx) -> Dict[str, float]:
+    glucose = ctx.env.getMetabolite("glucose")
+    atp = ctx.env.getMetabolite("atp")
+    insulin = ctx.env.getSignal("insulin")
+    # 肝脏葡萄糖激酶 (GK) 的 Km 较高，受胰岛素高度诱导
+    v_max = 0.25  # 从 0.3 降低到 0.25
+    km_glucose = 5.0 
+    # 速率受血糖和胰岛素共同驱动
+    rate = v_max * (glucose / (glucose + km_glucose)) * (0.2 + 0.8 * insulin)
+    actual_rate = min(rate, glucose * 0.1, atp * 0.5)
+    ctx.env.recordRate("hexokinase", actual_rate)
+    return {"glucose": -actual_rate, "g6p": actual_rate, "atp": -actual_rate, "adp": actual_rate}
 
 def pfk1_step(ctx: Ctx) -> Dict[str, float]:
     g6p = ctx.env.getMetabolite("g6p")
@@ -412,8 +414,18 @@ def fattyAcidSynthesis(ctx: Ctx) -> Dict[str, float]:
     synth_avail = 1.0 / (1.0 + np.exp(-3.0 * (1.0 - fa)))
     base = ctx.rate_modifier * (0.01 + 0.05 * insulin * ins_sens) * min(acetyl, nadph * 0.5, atp * 0.5)
     rate = base * lipogenesis_act * synth_avail * 0.8
+    # --- 新增：胆固醇合成 (Cholesterogenesis) ---
+    # 模拟 HMG-CoA 还原酶途径，同样消耗 NADPH 和 ATP
+    chol_rate = rate * 0.15 # 假设约15%的合成流量分流至胆固醇
     ctx.env.recordRate("fattyAcidSynthesis", rate)
-    return {"acetyl_coa": -rate, "fatty_acid": rate, "nadph": -rate * 0.5, "atp": -rate * 0.2, "adp": rate * 0.2}
+    return {
+        "acetyl_coa": -rate, 
+        "fatty_acid": rate, 
+        "cholesterol": chol_rate,          # 产生胆固醇
+        "nadph": -(rate * 0.5 + chol_rate * 0.8), # 胆固醇合成对还原当量需求更高
+        "atp": -(rate * 0.2 + chol_rate * 0.3),
+        "adp": (rate * 0.2 + chol_rate * 0.3)
+    }
 
 def betaOxidation(ctx: Ctx) -> Dict[str, float]:
     glucagon = ctx.env.getSignal("glucagon")
@@ -480,30 +492,261 @@ def adiposeLipolysis(ctx: Ctx) -> Dict[str, float]:
         fa_out *= 0.02
     return {"fatty_acid": fa_out, "glycerol": rate * 0.2}
 
-def aminoAcidCatabolism(ctx: Ctx) -> Dict[str, float]:
+def protein_metabolism(ctx: Ctx) -> Dict[str, float]:
     aa = ctx.env.getMetabolite("amino_acid")
+    prot = ctx.env.getMetabolite("protein_store")
     atp = ctx.env.getMetabolite("atp")
-    cort = ctx.env.getSignal("cortisol")
-    post = 1.0 if bool(ctx.env.getParameter("is_postprandial")) else 0.0
-    rate = ctx.rate_modifier * (1.0 + 0.3 * post + 0.3 * cort) * min(max(aa - 20.0, 0.0), atp) * 0.05
-    ctx.env.recordRate("aminoAcidCatabolism", rate)
-    return {"amino_acid": -rate, "ammonia": rate, "atp": -rate * 0.1, "adp": rate * 0.1}
+    ins = ctx.env.getSignal("insulin")
+    glc = ctx.env.getSignal("glucagon")
+    # 增加对 protein_store 的容量限制，防止无限合成
+    prot_limit = 1.0 - (prot / 1000.0) 
+    # 提高能量门槛：ATP 太低时停止合成
+    synth_rate = 0.05 * ins * (aa / (aa + 5.0)) * (atp / (atp + 2.0)) * max(0, prot_limit)
+    break_rate = 0.02 * glc * (prot / (prot + 5.0))
+    # 正值：合成速率大于分解速率；负值：分解速率大于合成速率
+    net = synth_rate - break_rate
+    ctx.env.recordRate("protein_metabolism", net)
+    return {
+        "protein_store": net,
+        "amino_acid": -net,
+        "atp": -synth_rate * 4.0,  # 显著提高合成能耗
+        "adp": synth_rate * 4.0,
+    }
+
+def aa_catabolism_step(ctx: Ctx) -> Dict[str, float]:
+    aa = ctx.env.getMetabolite("amino_acid")
+    nad_plus = ctx.env.getMetabolite("nad_plus")
+    atp = ctx.env.getMetabolite("atp")
+    nh3 = ctx.env.getMetabolite("ammonia")
+    # 模拟“氨堆积”产生的负反馈：氨浓度太高会抑制脱氨速率
+    nh3_inhibition = 1.0 / (1.0 + (nh3 / 2.0)**2)
+    # # 驱动力：高胰高血糖素或低能量状态（需要碳骨架供能）
+    # energy_demand = (3.0 - atp) / 3.0
+    # 当 ATP 低于 2.0 时，产生一个强烈的抑制信号
+    # 防止在能量不足时强行开展高耗能的脱氨-尿素循环链条
+    energy_safety_value = 1.0 / (1.0 + np.exp(-5.0 * (atp - 1.8)))
+    drive = max(ctx.env.getSignal("glucagon") * energy_safety_value, 0.0)
+    v_max = 0.1 # 适当下调 v_max，防止突发流量冲垮 ATP 池
+    rate = ctx.rate_modifier * v_max * drive * (aa / (aa + 10.0)) * (nad_plus / (nad_plus + 0.5)) * nh3_inhibition
+    # print(f'modifier: {ctx.rate_modifier:.4f}, nh3_inhibition: {nh3_inhibition:.4f}, drive: {drive:.4f}, aa: {(aa / (aa + 10.0)):.4f}, nad+: {(nad_plus / (nad_plus + 0.5)):.4f}, rate: {rate:.4f}\n')
+    ctx.env.recordRate("aa_catabolism_step", rate)
+    return {
+        "amino_acid": -rate,
+        "pyruvate": rate * 0.7, 
+        "acetyl_coa": rate * 0.3, 
+        "ammonia": rate,       # 1:1 产生氨
+        "nad_plus": -rate,     # 1:1 消耗 NAD+ (GAPDH 样反应)
+        "nadh": rate           # 1:1 产生 NADH
+    }
+
+def urea_cycle(ctx: Ctx) -> Dict[str, float]:
+    nh3 = ctx.env.getMetabolite("ammonia")
+    atp = ctx.env.getMetabolite("atp")
+    liver_fn = ctx.env.getParameter("liver_function")
+    
+    # 1. 激素反馈：将死板的 post 替换为受胰高血糖素驱动的诱导因子
+    # 胰高血糖素升高（饥饿或高蛋白餐后）会增强尿素循环处理氮的能力
+    glc = ctx.env.getSignal("glucagon")
+    ins = ctx.env.getSignal("insulin")
+    # 诱导因子：在高胰高血糖素下增强，在极高胰岛素下略微受抑
+    hormone_induction = 1.0 + 0.8 * (glc / (glc + 0.2)) - 0.2 * (ins / (ins + 0.5))
+    
+    # 2. 核心动力学计算
+    if nh3 <= 1e-6 or atp <= 0.1 or liver_fn <= 0.0:
+        raw_rate = 0.0
+    else:
+        # 提高基础 v_max 以确保在高蛋白负荷下能“拉得动”
+        v_max = 0.5 * liver_fn * hormone_induction 
+        # 使用更敏感的 Hill 系数或米氏常数
+        # nh3 达到 0.5 时反应显著加速
+        substrate_term = nh3 / (nh3 + 0.5) 
+        # 能量项：放宽 ATP 限制门槛，但保持其驱动作用
+        energy_term = atp / (atp + 0.5)
+        potential = ctx.rate_modifier * v_max * substrate_term * energy_term
+        # 3. 改进的平滑限制逻辑 (防止震荡)
+        # 单步消耗不超过现有氨浓度的 20%，且受 ATP 供应上限限制
+        max_by_ammonia = nh3 * 0.2 
+        max_by_atp = (atp - 0.1) / 4.0 if atp > 0.1 else 0.0
+        raw_rate = min(potential, max_by_ammonia, max_by_atp)
+
+    # 4. 速率平滑 (Memory-based smoothing)
+    prev = ctx.env.getMetabolite("mem_rate_ureaCycle")
+    alpha = 0.1  # 保持较小的 alpha 以消除锯齿震荡
+    rate = prev + alpha * (raw_rate - prev)
+    # 防止负值
+    rate = max(0.0, rate)
+
+    # 5. 记录与返回
+    ctx.env.setMetabolite("mem_rate_ureaCycle", rate)
+    ctx.env.recordRate("urea_cycle", rate)
+    return {
+        "ammonia": -rate,
+        "atp": -rate * 4.0,  # 消耗 4 个 ATP
+        "adp": rate * 4.0,
+        "urea": rate,
+    }
+
 
 def aminoAcidSynthesisTransport(ctx: Ctx) -> Dict[str, float]:
+    # 氨基酸合成蛋白与转运
     aa = ctx.env.getMetabolite("amino_acid")
     atp = ctx.env.getMetabolite("atp")
-    rate = ctx.rate_modifier * min(aa, atp) * 0.005
+    ins = ctx.env.getSignal("insulin")
+    v_max = 0.02 * (0.5 + ins)
+    substrate = min(aa, atp)
+    rate = ctx.rate_modifier * v_max * substrate
     ctx.env.recordRate("aminoAcidSynthesisTransport", rate)
-    return {"amino_acid": -rate, "albumin": rate * 0.6, "clotting_factor": rate * 0.4, "atp": -rate * 0.2, "adp": rate * 0.2}
+    return {
+        "amino_acid": -rate,
+        "albumin": rate * 0.6,
+        "clotting_factor": rate * 0.4,
+        "atp": -rate * 0.2,
+        "adp": rate * 0.2,
+    }
+
+def glutamineShunt(ctx: Ctx) -> Dict[str, float]:
+    # 谷氨酰胺分路
+    nh3 = ctx.env.getMetabolite("ammonia")
+    atp = ctx.env.getMetabolite("atp")
+    liver_fn = ctx.env.getParameter("liver_function")
+    if nh3 <= 0.3 or atp <= 0.2 or liver_fn <= 0.0:
+        raw_rate = 0.0
+    else:
+        activation = max((nh3 - 0.3) / 0.4, 0.0)
+        v_max = 0.1 * liver_fn
+        potential = ctx.rate_modifier * v_max * activation
+        raw_rate = min(potential, nh3 * 0.5, atp)
+    prev = ctx.env.getMetabolite("mem_rate_glutamineShunt")
+    alpha = 0.12
+    rate = prev + alpha * (raw_rate - prev)
+    if rate < 0.0:
+        rate = 0.0
+    ctx.env.setMetabolite("mem_rate_glutamineShunt", rate)
+    ctx.env.recordRate("glutamineShunt", rate)
+    return {
+        "ammonia": -rate,
+        "glutamine": rate,
+        "atp": -rate,
+        "adp": rate,
+    }
+
+def glucoseAlanineCycle(ctx: Ctx) -> Dict[str, float]:
+    # 将外周组织（肌肉）送来的丙氨酸转化为丙酮酸（用于糖异生）并释放氨
+    ala = ctx.env.getMetabolite("alanine")
+    atp = ctx.env.getMetabolite("atp")
+    ins = ctx.env.getSignal("insulin")
+    glc = ctx.env.getSignal("glucagon")
+    drive = max(glc - ins, 0.0)
+    if ala <= 0.0 or atp <= 0.2 or drive <= 0.0:
+        raw_rate = 0.0
+    else:
+        v_max = 0.15
+        substrate_term = ala / (ala + 0.5)
+        hormone_term = drive / (drive + 0.5)
+        energy_term = atp / (atp + 0.5)
+        potential = ctx.rate_modifier * v_max * substrate_term * hormone_term * energy_term
+        raw_rate = min(potential, ala, atp * 0.5)
+    prev = ctx.env.getMetabolite("mem_rate_glucoseAlanineCycle")
+    alpha = 0.12
+    rate = prev + alpha * (raw_rate - prev)
+    if rate < 0.0:
+        rate = 0.0
+    ctx.env.setMetabolite("mem_rate_glucoseAlanineCycle", rate)
+    ctx.env.recordRate("glucoseAlanineCycle", rate)
+    return {
+        "alanine": -rate,
+        "ammonia": rate * 0.5,
+        "glucose": rate * 0.5,
+        "atp": -rate * 2.0,
+        "adp": rate * 2.0,
+    }
+
+
+def metabolite_export(ctx: Ctx) -> Dict[str, float]:
+    urea = ctx.env.getMetabolite("urea")
+    aa = ctx.env.getMetabolite("amino_acid")
+    post = 1.0 if bool(ctx.env.getParameter("is_postprandial")) else 0.0
+    k_renal = 0.01
+    k_abs = 0.005
+    urea_clear = k_renal * urea
+    aa_absorb = k_abs * post
+
+    # 模拟周转：乳酸在血液中被其他组织（如心肌）利用
+    lactate = ctx.env.getMetabolite("lactate")
+    lac_clearance = lactate * 0.05 
+
+    ctx.env.recordRate("metabolite_export", urea_clear + k_abs)
+    return {
+        "urea": -urea_clear,
+        "amino_acid": aa_absorb,
+        "lactate": -lac_clearance,
+    }
+
+def tca_cycle(ctx: Ctx) -> Dict[str, float]:
+    acoa = ctx.env.getMetabolite("acetyl_coa")
+    nad = ctx.env.getMetabolite("nad_plus")
+    adp = ctx.env.getMetabolite("adp")
+    
+   # 1. 降低对乙酰CoA的敏感度：使用 Hill 系数 (2次方)
+    # 这能让速率在底物增加时平滑上升，而不是线性暴冲
+    substrate_term = (acoa**2) / (acoa**2 + 2.0**2)
+    
+    # --- 2. 引入能量反馈限制 (关键) ---
+    # 如果 ATP 已经非常充足，TCA 应该自动减速，防止过度抽取底物
+    atp = ctx.env.getMetabolite("atp")
+    energy_inhibition = 1.0 / (1.0 + np.exp(2.0 * (atp - 2.8))) 
+    
+    v_max = 0.35  # 适当调低最大速率，让能量产出更平稳
+    potential_rate = ctx.rate_modifier * v_max * substrate_term * (nad / (nad + 0.5)) * energy_inhibition
+    
+    # --- 3. 增加单步消耗保护 ---
+    # 强制单步最多消耗当前乙酰CoA存量的 15%，防止“一抽到底”导致的震荡
+    actual_rate = min(potential_rate, acoa * 0.15)
+    
+    # --- 4. 引入速率平滑 (Memory Smoothing) ---
+    # 模拟酶促反应的物理惯性
+    prev = ctx.env.getMetabolite("mem_rate_tca")
+    alpha = 0.08  # 较小的 alpha 可以过滤掉高频震荡
+    smooth_rate = prev + alpha * (actual_rate - prev)
+    ctx.env.setMetabolite("mem_rate_tca", smooth_rate)
+    
+    ctx.env.recordRate("tca_cycle", smooth_rate)
+    
+    return {
+        "acetyl_coa": -smooth_rate,
+        "nad_plus": -smooth_rate * 3.0,
+        "nadh": smooth_rate * 3.0,
+        "atp": smooth_rate,
+        "adp": -smooth_rate
+    }
 
 def oxidativePhosphorylation(ctx: Ctx) -> Dict[str, float]:
     nadh = ctx.env.getMetabolite("nadh")
     oxygen = ctx.env.getMetabolite("oxygen")
     adp = ctx.env.getMetabolite("adp")
-    # 修改：必须受到 ADP 的严格限制
-    rate = ctx.rate_modifier * min(nadh, oxygen * 0.2, adp) * 1.5
-    ctx.env.recordRate("oxidativePhosphorylation", rate)
-    return {"nadh": -rate, "nad_plus": rate, "oxygen": -rate * 0.5, "atp": rate, "adp": -rate}
+    
+    # 1. 将 min 限制改为 Hill 函数响应，让速率在 ADP 降低时平滑减速
+    # 而不是掉到某个值突然断电
+    adp_term = adp / (adp + 0.2)
+    potential_rate = ctx.rate_modifier * min(nadh, oxygen * 0.2) * adp_term * 1.5
+    
+    # 2. 增加单步安全限制：单步消耗 ADP 不得超过其存量的 30%
+    actual_rate = min(potential_rate, adp * 0.3)
+    
+    # 3. 速率平滑处理 (非常重要！)
+    prev = ctx.env.getMetabolite("mem_rate_oxphos")
+    alpha = 0.1  # 惯性系数
+    smooth_rate = prev + alpha * (actual_rate - prev)
+    ctx.env.setMetabolite("mem_rate_oxphos", smooth_rate)
+    
+    ctx.env.recordRate("oxidativePhosphorylation", smooth_rate)
+    return {
+        "nadh": -smooth_rate, 
+        "nad_plus": smooth_rate, 
+        "oxygen": -smooth_rate * 0.5, 
+        "atp": smooth_rate * 2.5, 
+        "adp": -smooth_rate * 2.5
+    }
 
 def ketogenesis(ctx: Ctx) -> Dict[str, float]:
     # 酮体生成
@@ -542,7 +785,7 @@ def lactateFermentation(ctx: Ctx) -> Dict[str, float]:
     # 安全限制：单步不要消耗超过当前丙酮酸或 NADH 的 30%
     actual_rate = potential_rate * min(1.0, (pyr * 0.3) / (potential_rate + 1e-6), (nadh * 0.3) / (potential_rate + 1e-6))
     ctx.env.recordRate("lactateFermentation", actual_rate)
-    # 确保 1:1 回收
+    # 确保 NADH:NAD+ 比例保持 1:1 回收
     return {
         "pyruvate": -actual_rate,
         "lactate": actual_rate,
@@ -775,14 +1018,19 @@ def orchestrateGluconeogenesis(ctx: Ctx) -> Dict[str, float]:
     atp = ctx.env.getMetabolite("atp")
     # 糖异生极其耗能，ATP 不足时必须熄火
     atp_safety = max(0, (atp - 1.5) / 2.0)
-    rate = v_max * atp_safety * 0.8  # 添加0.8阻尼因子
+    # 当乳酸堆积时（例如 > 2.0），substrate_boost 会显著提升总速率
+    # # 使用 clip 限制 boost 范围，防止因乳酸极高导致速率失控震荡
+    lactate = ctx.env.getMetabolite("lactate")
+    lactate_boost = (lactate / (lactate + 1.0)) / 0.4
+    substrate_boost = np.clip(lactate_boost, 0.5, 2.0)
+    rate = v_max * atp_safety * substrate_boost * 0.8  # 添加0.8阻尼因子
     outputs = {
         "g6p": rate, 
         "lactate": -rate * 0.4, 
         "glycerol": -rate * 0.3, 
         "amino_acid": -rate * 0.3, 
-        "atp": -rate * 2.0,  # 真实生理：糖异生非常耗能
-        "adp": rate * 2.0
+        "atp": -rate * 3.0,  # 真实生理：糖异生非常耗能
+        "adp": rate * 3.0
     }
     ctx.write(outputs)
     ctx.env.recordRate("orchestrateGluconeogenesis", rate)
@@ -823,10 +1071,14 @@ def orchestrateLipidMetabolism(ctx: Ctx) -> Dict[str, float]:
     return outputs
 
 def orchestrateAminoAcidMetabolism(ctx: Ctx) -> Dict[str, float]:
-    o1 = aminoAcidCatabolism(ctx)
-    o2 = aminoAcidSynthesisTransport(ctx)
-    outputs = {}
-    for o in (o1, o2):
+    o1 = protein_metabolism(ctx)
+    o2 = aa_catabolism_step(ctx)
+    # o3 = glutamineShunt(ctx)
+    # o4 = glucoseAlanineCycle(ctx)
+    # o5 = aminoAcidSynthesisTransport(ctx)
+    o6 = metabolite_export(ctx)
+    outputs: Dict[str, float] = {}
+    for o in (o1, o2, o6):
         for k, v in o.items():
             outputs[k] = outputs.get(k, 0.0) + v
     ctx.write(outputs)
@@ -834,11 +1086,12 @@ def orchestrateAminoAcidMetabolism(ctx: Ctx) -> Dict[str, float]:
 
 def orchestrateEnergyHomeostasis(ctx: Ctx) -> Dict[str, float]:
     outputs = {}
-    # 1. 氧化磷酸化是 ATP 的核心来源，必须始终运行
+    # 1. TCA循环和氧化磷酸化是 ATP 的核心来源，必须始终运行
     # 2. 氧气供应是补充氧气的主要来源
-    o1 = oxidativePhosphorylation(ctx)
-    o2 = oxygen_supply(ctx)
-    for o in (o1, o2):
+    o1 = tca_cycle(ctx)
+    o2 = oxidativePhosphorylation(ctx)
+    o3 = oxygen_supply(ctx)
+    for o in (o1, o2, o3):
         for k, v in o.items(): outputs[k] = outputs.get(k, 0.0) + v
     # 3. 酮体生成是“备用电源”，仅在血糖低时激活，但不应切断主电源
     glucose = ctx.env.getMetabolite("glucose")
@@ -868,14 +1121,7 @@ def cytosolicATPase_load(ctx: Ctx) -> Dict[str, float]:
     return {"atp": -rate, "adp": rate}
 
 def orchestrateUreaCycle(ctx: Ctx) -> Dict[str, float]:
-    o1 = cps1_Ammonia_to_CarbamoylPhosphate(ctx)
-    o2 = otc_CarbamoylPhosphate_to_Citrulline(ctx)
-    o3 = ass1_Citrulline_to_ASP_Argininosuccinate(ctx)
-    o4 = asl_Argininosuccinate_to_Arginine_Fumarate(ctx)
-    outputs = {}
-    for o in (o1, o2, o3, o4):
-        for k, v in o.items():
-            outputs[k] = outputs.get(k, 0.0) + v
+    outputs = urea_cycle(ctx)
     ctx.write(outputs)
     return outputs
 
@@ -939,14 +1185,19 @@ def applyEnergyDeficitPolicies(ctx: Ctx) -> None:
     nadh = ctx.env.getMetabolite("nadh")
     nadp = ctx.env.getMetabolite("nad_plus")
     etoh = ctx.env.getMetabolite("ethanol")
-    # 生理 ATP 正常在 2-5 之间，低于 1.5 才算危机
     if atp < 1.5: 
         ctx.applyAction("downscale_rates", 0.3)
     else:
         ctx.applyAction("downscale_rates", 1.0)
-    # 酒精阈值也要调低
     if etoh > 0.1: 
         ctx.applyAction("downscale_rates", ctx.rate_modifier * 0.8)
+    nh3 = ctx.env.getMetabolite("ammonia")
+    if nh3 > 0.5:
+        liver_fn = ctx.env.getParameter("liver_function")
+        toxic_modifier = (nh3 - 0.5) / 0.5
+        toxic_modifier = max(min(toxic_modifier, 1.0), 0.0)
+        new_liver_fn = liver_fn * (1.0 - 0.02 * toxic_modifier)
+        ctx.env.setParameter("liver_function", new_liver_fn)
 
 def update_hormones(ctx: Ctx) -> Dict[str, Dict[str, float]]:
     glucose = ctx.env.getMetabolite("glucose")
@@ -1017,8 +1268,9 @@ class LiverMetabolismSystem:
             orchestrateNADHomeostasis,
             cytosolicATPase_load,
             orchestrateLipidMetabolism,
-            # orchestrateAminoAcidMetabolism,
-            # orchestrateUreaCycle,
+
+            orchestrateAminoAcidMetabolism,
+            orchestrateUreaCycle,
             # orchestrateSynthesisSecretion,
             orchestrateDetoxification,
         ]
