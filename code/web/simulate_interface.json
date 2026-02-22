@@ -1,0 +1,568 @@
+{
+  "system_name": "Liver Metabolism Simulation",
+  "version": "1.0",
+  "metadata": {
+    "time_unit": "minute",
+    "rate_convention": "Negative = Consumption, Positive = Production"
+  },
+  "hierarchy": {
+    "orchestrateSystemSignals": {
+      "label": "全局激素与神经信号调控",
+      "children": [
+        "hormoneSignalTransduction",
+        "neuralSignalIntegration",
+        "immuneSignalInteraction",
+        "signalDegradationModule"
+      ]
+    },
+    "signalDegradationModule": {
+      "label": "激素降解模块",
+      "children": [
+        "degradeInsulin",
+        "degradeGlucagon",
+        "inactivateCatecholamines"
+      ]
+    },
+    "orchestrateGlucoseMetabolism": {
+      "label": "糖代谢编排",
+      "children": [
+        "orchestrateGlycolysis",
+        "orchestrateGluconeogenesis",
+        "orchestrateGlycogen"
+      ]
+    },
+    "orchestrateGlycolysis": {
+      "label": "糖酵解途径",
+      "children": [
+        "hexokinase_step",
+        "pfk1_step",
+        "pyruvate_kinase_step",
+        "pyruvate_destination_logic"
+      ]
+    },
+    "orchestrateGluconeogenesis": {
+      "label": "糖异生途径",
+      "children": ["orchestrateGluconeogenesis-step"]
+    },
+    "orchestrateGlycogen": {
+      "label": "糖原代谢模块",
+      "children": [
+        "orchestrateGlycogenSynthesis",
+        "orchestrateGlycogenBreakdown"
+      ]
+    },
+    "orchestrateLipidMetabolism": {
+      "label": "脂质代谢编排",
+      "children": [
+        "fattyAcidSynthesis",
+        "deNovoLipogenesis",
+        "lipidTransport",
+        "adiposeLipolysis",
+        "betaOxidation"
+      ]
+    },
+    "orchestrateAminoAcidMetabolism": {
+      "label": "氨基酸代谢编排",
+      "children": [
+        "protein_metabolism",
+        "aa_catabolism_step",
+        "metabolite_export"
+      ]
+    },
+    "orchestrateEnergyHomeostasis": {
+      "label": "能量稳态编排",
+      "children": [
+        "tca_cycle",
+        "oxidativePhosphorylation",
+        "oxygen_supply",
+        "ketogenesis"
+      ]
+    },
+    "orchestrateNADHomeostasis": {
+      "label": "NAD(H)/NADP(H) 稳态编排",
+      "children": [
+        "lactateFermentation",
+        "nampt_Salvage",
+        "deNovoNADSynthesis"
+      ]
+    },
+    "orchestrateUreaCycle": {
+      "label": "尿素循环整体编排",
+      "children": [
+        "urea_cycle"
+      ]
+    },
+    "orchestrateDetoxification": {
+      "label": "解毒与药物代谢编排",
+      "children": [
+        "phaseI_OxRed",
+        "phaseII_Conjugation",
+        "ethanol_ADH",
+        "acetaldehyde_ALDH",
+        "acetate_to_acetylcoa",
+        "bilirubinUGT"
+      ]
+    },
+    "orchestrateSynthesisSecretion": {
+      "label": "合成与分泌编排",
+      "children": [
+        "bileAcidSynthesis",
+        "bileExcretion",
+        "plasmaProteinSynthesis",
+        "coagulationFactorSynthesis"
+      ]
+    },
+    "g6pase_G6P_to_Glucose": {
+      "label": "葡萄糖-6-磷酸酶步 (G6P → Glucose)",
+      "children": []
+    },
+    "cytosolicATPase_load": {
+      "label": "胞质 ATPase 负荷",
+      "children": []
+    }
+  },
+  "reactions": {
+    "hexokinase_step": {
+      "id": "rate-hexokinase",
+      "parent_module": "orchestrateGlycolysis",
+      "display_name": "己糖激酶/葡萄糖激酶步",
+      "rate_key": "hexokinase",
+      "flux": {
+        "glucose": -1.0,
+        "atp": -1.0,
+        "g6p": 1.0,
+        "adp": 1.0
+      },
+      "regulation": "受血糖和胰岛素共同驱动，限制单步抽取葡萄糖和 ATP"
+    },
+    "pfk1_step": {
+      "id": "rate-pfk1",
+      "parent_module": "orchestrateGlycolysis",
+      "display_name": "磷酸果糖激酶-1 步",
+      "rate_key": "pfk1",
+      "flux": {
+        "g6p": -1.0,
+        "atp": -1.0,
+        "f16bp": 1.0,
+        "adp": 1.0
+      },
+      "regulation": "受 ATP、F16BP 反馈抑制，能量充足时减速"
+    },
+    "pyruvate_kinase_step": {
+      "id": "rate-pyruvate_kinase",
+      "parent_module": "orchestrateGlycolysis",
+      "display_name": "丙酮酸激酶步",
+      "rate_key": "pyruvate_kinase",
+      "flux": {
+        "f16bp": -1.0,
+        "pyruvate": 2.0,
+        "atp": 4.0,
+        "adp": -4.0,
+        "nad_plus": -2.0,
+        "nadh": 2.0
+      },
+      "regulation": "受 F16BP、ADP、NAD+ 供应和安全因子限制单步抽取"
+    },
+    "pyruvate_destination_logic": {
+      "id": "rate-lactate_production",
+      "parent_module": "orchestrateGlycolysis",
+      "display_name": "丙酮酸去向分配",
+      "rate_key": "lactate_production",
+      "flux": {
+        "pyruvate": -1.0,
+        "lactate": 1.0,
+        "acetyl_coa": 1.0,
+        "nadh": -1.0,
+        "nad_plus": 1.0
+      },
+      "regulation": "按氧供应在乳酸生成与乙酰辅酶A 之间平滑分配"
+    },
+    "g6pase_G6P_to_Glucose": {
+      "id": "rate-g6pase_G6P_to_Glucose",
+      "parent_module": null,
+      "display_name": "葡萄糖-6-磷酸酶步",
+      "rate_key": "g6pase_G6P_to_Glucose",
+      "flux": {
+        "g6p": -1.0,
+        "glucose": 1.0
+      },
+      "regulation": "受胰岛素强力抑制，控制肝糖输出"
+    },
+    "orchestrateGlycogenSynthesis": {
+      "id": "rate-glycogen_synthesis_total",
+      "parent_module": "orchestrateGlycogen",
+      "display_name": "糖原合成净反应",
+      "rate_key": "glycogen_synthesis_total",
+      "flux": {
+        "g6p": -1.0,
+        "glycogen": 1.0,
+        "atp": -1.1,
+        "adp": 1.1
+      },
+      "regulation": "受胰岛素/胰高血糖素比值与糖原储量双重调控"
+    },
+    "orchestrateGlycogenBreakdown": {
+      "id": "rate-glycogen_breakdown_total",
+      "parent_module": "orchestrateGlycogen",
+      "display_name": "糖原分解净反应",
+      "rate_key": "glycogen_breakdown_total",
+      "flux": {
+        "glycogen": -1.0,
+        "g6p": 1.0
+      },
+      "regulation": "受胰高血糖素/肾上腺素驱动，并受 G6P 水平反馈抑制"
+    },
+    "orchestrateGluconeogenesis-step": {
+      "id": "rate-orchestrateGluconeogenesis",
+      "parent_module": "orchestrateGluconeogenesis",
+      "display_name": "糖异生净反应",
+      "rate_key": "orchestrateGluconeogenesis",
+      "flux": {
+        "g6p": 1.0,
+        "lactate": -0.4,
+        "glycerol": -0.3,
+        "amino_acid": -0.3,
+        "atp": -3.0,
+        "adp": 3.0
+      },
+      "regulation": "受胰高血糖素/胰岛素比值、乳酸负荷和 ATP 供应共同调控"
+    },
+    "fattyAcidSynthesis": {
+      "id": "rate-fattyAcidSynthesis",
+      "parent_module": "orchestrateLipidMetabolism",
+      "display_name": "脂肪酸与胆固醇合成",
+      "rate_key": "fattyAcidSynthesis",
+      "flux": {
+        "acetyl_coa": -1.0,
+        "fatty_acid": 1.0,
+        "cholesterol": 0.15,
+        "nadph": -0.62,
+        "nadp_plus": 0.62,
+        "atp": -0.245,
+        "adp": 0.245
+      },
+      "regulation": "受胰岛素、脂肪酸储量与 NADPH/ATP 供应调节"
+    },
+    "deNovoLipogenesis": {
+      "id": "rate-deNovoLipogenesis",
+      "parent_module": "orchestrateLipidMetabolism",
+      "display_name": "葡萄糖转脂肪酸 (DNL)",
+      "rate_key": "deNovoLipogenesis",
+      "flux": {
+        "glucose": -1.0,
+        "fatty_acid": 1.0,
+        "atp": -0.2,
+        "adp": 0.2,
+        "nadph": -0.5,
+        "nadp_plus": 0.5
+      },
+      "regulation": "受高血糖与高胰岛素激活，受脂肪酸与能量状态限制"
+    },
+    "lipidTransport": {
+      "id": "rate-lipidTransport",
+      "parent_module": "orchestrateLipidMetabolism",
+      "display_name": "肝脂输出与 TG 装载",
+      "rate_key": "lipidTransport",
+      "flux": {
+        "fatty_acid": -0.7,
+        "triglycerides": 1.0
+      },
+      "regulation": "受胰岛素与脂肪酸供应调节，可伴随血浆 TG 清除"
+    },
+    "adiposeLipolysis": {
+      "id": "rate-adiposeLipolysis",
+      "parent_module": "orchestrateLipidMetabolism",
+      "display_name": "脂肪组织脂解输入肝脏",
+      "rate_key": "adiposeLipolysis",
+      "flux": {
+        "fatty_acid": 0.8,
+        "glycerol": 0.2
+      },
+      "regulation": "受胰高血糖素/胰岛素比值和肾上腺素激活，脂肪酸过高时自限"
+    },
+    "betaOxidation": {
+      "id": "rate-betaOxidation",
+      "parent_module": "orchestrateLipidMetabolism",
+      "display_name": "脂肪酸 β-氧化",
+      "rate_key": "betaOxidation",
+      "flux": {
+        "fatty_acid": -1.0,
+        "acetyl_coa": 1.0,
+        "nadh": 1.0,
+        "nad_plus": -1.0,
+        "atp": 0.5,
+        "adp": -0.5
+      },
+      "regulation": "受胰高血糖素/胰岛素比值、脂肪酸浓度和 NAD+/乙醇抑制影响"
+    },
+    "protein_metabolism": {
+      "id": "rate-protein_metabolism",
+      "parent_module": "orchestrateAminoAcidMetabolism",
+      "display_name": "肝内蛋白质合成/分解平衡",
+      "rate_key": "protein_metabolism",
+      "flux": {
+        "protein_store": 1.0,
+        "amino_acid": -1.0,
+        "atp": -1.0,
+        "adp": 1.0
+      },
+      "regulation": "净流量由胰岛素促进合成、胰高血糖素促进分解决定"
+    },
+    "aa_catabolism_step": {
+      "id": "rate-aa_catabolism_step",
+      "parent_module": "orchestrateAminoAcidMetabolism",
+      "display_name": "氨基酸脱氨与碳骨架利用",
+      "rate_key": "aa_catabolism_step",
+      "flux": {
+        "amino_acid": -1.0,
+        "pyruvate": 0.7,
+        "acetyl_coa": 0.3,
+        "ammonia": 1.0,
+        "nad_plus": -1.0,
+        "nadh": 1.0
+      },
+      "regulation": "受胰高血糖素驱动，并受氨堆积与 ATP 状态抑制"
+    },
+    "metabolite_export": {
+      "id": "rate-metabolite_export",
+      "parent_module": "orchestrateAminoAcidMetabolism",
+      "display_name": "尿素与氨基酸外周转运",
+      "rate_key": "metabolite_export",
+      "flux": {
+        "urea": -1.0,
+        "amino_acid": 1.0,
+        "lactate": -1.0
+      },
+      "regulation": "尿素按肾清除常数排出，进食状态下吸收部分氨基酸"
+    },
+    "urea_cycle": {
+      "id": "rate-urea_cycle",
+      "parent_module": "orchestrateUreaCycle",
+      "display_name": "尿素循环净反应",
+      "rate_key": "urea_cycle",
+      "flux": {
+        "ammonia": -1.0,
+        "urea": 1.0,
+        "atp": -4.0,
+        "adp": 4.0
+      },
+      "regulation": "受胰高血糖素诱导、ATP 供应及肝功能参数调节，带有速率记忆平滑"
+    },
+    "tca_cycle": {
+      "id": "rate-tca_cycle",
+      "parent_module": "orchestrateEnergyHomeostasis",
+      "display_name": "三羧酸循环 (TCA)",
+      "rate_key": "tca_cycle",
+      "flux": {
+        "acetyl_coa": -1.0,
+        "nad_plus": -3.0,
+        "nadh": 3.0,
+        "atp": 1.0,
+        "adp": -1.0
+      },
+      "regulation": "受乙酰辅酶A、NAD+ 供应与 ATP 水平反馈抑制，并经记忆项平滑"
+    },
+    "oxidativePhosphorylation": {
+      "id": "rate-oxidativePhosphorylation",
+      "parent_module": "orchestrateEnergyHomeostasis",
+      "display_name": "氧化磷酸化",
+      "rate_key": "oxidativePhosphorylation",
+      "flux": {
+        "nadh": -1.0,
+        "nad_plus": 1.0,
+        "oxygen": -0.5,
+        "atp": 2.5,
+        "adp": -2.5
+      },
+      "regulation": "受 NADH、氧和 ADP 双重限制，并通过记忆项平滑"
+    },
+    "ketogenesis": {
+      "id": "rate-ketogenesis",
+      "parent_module": "orchestrateEnergyHomeostasis",
+      "display_name": "酮体生成",
+      "rate_key": "ketogenesis",
+      "flux": {
+        "acetyl_coa": -1.0,
+        "ketone_body": 1.0
+      },
+      "regulation": "在低血糖且高胰高血糖素/低胰岛素时激活，带最小与最大速率夹紧"
+    },
+    "lactateFermentation": {
+      "id": "rate-lactateFermentation",
+      "parent_module": "orchestrateNADHomeostasis",
+      "display_name": "乳酸发酵 (NAD+ 回收)",
+      "rate_key": "lactateFermentation",
+      "flux": {
+        "pyruvate": -1.0,
+        "lactate": 1.0,
+        "nadh": -1.0,
+        "nad_plus": 1.0
+      },
+      "regulation": "由缺氧和 NADH/NAD+ 比例双重触发，限制单步抽取底物与 NADH"
+    },
+    "nampt_Salvage": {
+      "id": "rate-nampt_Salvage",
+      "parent_module": "orchestrateNADHomeostasis",
+      "display_name": "NAMPT NAD+ 救援途径",
+      "rate_key": "nampt_Salvage",
+      "flux": {
+        "nicotinamide": -1.0,
+        "nad_plus": 1.0,
+        "atp": -0.2,
+        "adp": 0.2
+      },
+      "regulation": "受肝功能与底物 (NAM、ATP) 限制，整体速率偏低以防 NAD+ 堆积"
+    },
+    "deNovoNADSynthesis": {
+      "id": "rate-deNovoNADSynthesis",
+      "parent_module": "orchestrateNADHomeostasis",
+      "display_name": "从烟酸/色氨酸新生合成 NAD+",
+      "rate_key": "deNovoNADSynthesis",
+      "flux": {
+        "niacin": -0.5,
+        "tryptophan": -1.0,
+        "nad_plus": 1.0,
+        "atp": -0.2,
+        "adp": 0.2
+      },
+      "regulation": "受前体供应、ATP 和肝功能限制，速率设定较低"
+    },
+    "phaseI_OxRed": {
+      "id": "rate-phaseI_OxRed",
+      "parent_module": "orchestrateDetoxification",
+      "display_name": "药物代谢 Phase I 氧化还原",
+      "rate_key": "phaseI_OxRed",
+      "flux": {
+        "phaseI_intermediates": 1.0,
+        "nadph": -1.0,
+        "nadp_plus": 1.0
+      },
+      "regulation": "受外源性负荷 (xenobiotic_load)、NADPH 与肝功能决定"
+    },
+    "phaseII_Conjugation": {
+      "id": "rate-phaseII_Conjugation",
+      "parent_module": "orchestrateDetoxification",
+      "display_name": "药物代谢 Phase II 结合反应",
+      "rate_key": "phaseII_Conjugation",
+      "flux": {
+        "phaseI_intermediates": -1.0,
+        "conjugates": 1.0,
+        "udpga": -0.2,
+        "paps": -0.1,
+        "gsh": -0.1
+      },
+      "regulation": "受 Phase I 中间体、UDPGA/PAPS/GSH 辅酶与肝功能平方调控"
+    },
+    "bilirubinUGT": {
+      "id": "rate-bilirubinUGT",
+      "parent_module": "orchestrateDetoxification",
+      "display_name": "胆红素 UGT 结合",
+      "rate_key": "bilirubinUGT",
+      "flux": {
+        "indirect_bilirubin": -1.0,
+        "direct_bilirubin": 1.0,
+        "udpga": -0.5
+      },
+      "regulation": "受胆红素与 UDPGA 供应及肝功能驱动"
+    },
+    "ethanol_ADH": {
+      "id": "rate-ethanol_ADH",
+      "parent_module": "orchestrateDetoxification",
+      "display_name": "乙醇氧化 (ADH)",
+      "rate_key": "ethanol_ADH",
+      "flux": {
+        "ethanol": -1.0,
+        "acetaldehyde": 1.0,
+        "nadh": 0.8,
+        "nad_plus": -0.8
+      },
+      "regulation": "受乙醇浓度、NAD+ 供应与肝功能调节"
+    },
+    "acetaldehyde_ALDH": {
+      "id": "rate-acetaldehyde_ALDH",
+      "parent_module": "orchestrateDetoxification",
+      "display_name": "乙醛氧化 (ALDH)",
+      "rate_key": "acetaldehyde_ALDH",
+      "flux": {
+        "acetaldehyde": -1.0,
+        "acetate": 1.0,
+        "nadh": 0.8,
+        "nad_plus": -0.8
+      },
+      "regulation": "受乙醛浓度、NAD+、肝功能与 ALDH 活性控制"
+    },
+    "acetate_to_acetylcoa": {
+      "id": "rate-acetate_to_acetylcoa",
+      "parent_module": "orchestrateDetoxification",
+      "display_name": "乙酸活化为乙酰辅酶A",
+      "rate_key": "acetate_to_acetylcoa",
+      "flux": {
+        "acetate": -1.0,
+        "acetyl_coa": 1.0,
+        "atp": -0.2,
+        "adp": 0.2
+      },
+      "regulation": "受乙酸与 ATP 供应调节，归入解毒输出接口"
+    },
+    "bileAcidSynthesis": {
+      "id": "rate-bileAcidSynthesis",
+      "parent_module": "orchestrateSynthesisSecretion",
+      "display_name": "胆汁酸合成",
+      "rate_key": "bileAcidSynthesis",
+      "flux": {
+        "cholesterol": -1.0,
+        "bile_acid": 1.0,
+        "atp": -0.5,
+        "adp": 0.5
+      },
+      "regulation": "受胆固醇浓度与 ATP 能量门槛调控"
+    },
+    "bileExcretion": {
+      "id": "rate-bileExcretion",
+      "parent_module": "orchestrateSynthesisSecretion",
+      "display_name": "胆汁酸排泄",
+      "rate_key": "bileExcretion",
+      "flux": {
+        "bile_acid": -1.0
+      },
+      "regulation": "基础清除率叠加进食(胰岛素)驱动，限制单步最大排出比例"
+    },
+    "plasmaProteinSynthesis": {
+      "id": "rate-plasmaProteinSynthesis",
+      "parent_module": "orchestrateSynthesisSecretion",
+      "display_name": "白蛋白合成",
+      "rate_key": "plasmaProteinSynthesis",
+      "flux": {
+        "amino_acid": -1.0,
+        "albumin": 1.0,
+        "atp": -4.0,
+        "adp": 4.0
+      },
+      "regulation": "受氨基酸、ATP、胰岛素和白蛋白容量上限共同调节"
+    },
+    "coagulationFactorSynthesis": {
+      "id": "rate-coagulationFactorSynthesis",
+      "parent_module": "orchestrateSynthesisSecretion",
+      "display_name": "凝血因子合成",
+      "rate_key": "coagulationFactorSynthesis",
+      "flux": {
+        "amino_acid": -1.0,
+        "clotting_factor": 1.0,
+        "atp": -4.0,
+        "adp": 4.0
+      },
+      "regulation": "受氨基酸供给、ATP、凝血因子容量和速率记忆项调控"
+    },
+    "cytosolicATPase_load": {
+      "id": "rate-cytosolicATPase_load",
+      "parent_module": null,
+      "display_name": "胞质 ATPase 非特异性能量消耗",
+      "rate_key": "cytosolicATPase_load",
+      "flux": {
+        "atp": -1.0,
+        "adp": 1.0
+      },
+      "regulation": "表示基础维持代谢的 ATP 消耗，受 ATP 存量与全局缩放因子限制"
+    }
+  }
+}

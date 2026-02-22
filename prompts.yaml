@@ -119,3 +119,80 @@ create_constraints: |
   > 1. 是否遗漏任何输入或输出代谢物
   > 2. 是否存在数量级明显不符合生理范围的值
   > 3. 是否存在单位不统一情况
+
+
+create_interface: |
+  请作为一名生物信息学工程师，分析提供的 `code/simulate.py` 代码。我需要一份专门针对代谢反应逻辑的**动态接口文档**。请遵循以下要求：
+  1. **定义“接口”：** 这里的接口不是 HTTP 接口，而是代谢反应函数。请提取所有模拟代谢具体反应或编排模块的函数。
+  2. **调用关系：** 提取函数的调用关系。例如：
+  * `orchestrateGlycolysis`
+  * `-> hexokinase_step`
+  * `-> pfk1_step`
+  3. **通量导向的输入输出描述：**
+  针对每个反应函数，**不要**描述 Python 参数，而是描述它对 `ResourcePool` 的影响：
+  * **负值 (-Rate)**：代表该物质被消耗（底物）。
+  * **正值 (+Rate)**：代表该物质被生成（产物）。
+  * **速率锚点**：指出 `recordRate` 记录的键名。
+  
+  ## **请按以下参考的json格式，输出到 docs/simulate_interface.json：**
+  {
+    "system_name": "Liver Metabolism Simulation",
+    "version": "1.0",
+    "metadata": {
+      "time_unit": "minute",
+      "rate_convention": "Negative = Consumption, Positive = Production"
+    },
+    "hierarchy": {
+      "orchestrateGlycolysis": {
+        "label": "糖酵解途径",
+        "children": ["hexokinase", "pfk1", "pyruvate_kinase"]
+      },
+      "orchestrateLipidMetabolism": {
+        "label": "脂质代谢",
+        "children": ["fattyAcidSynthesis", "betaOxidation"]
+      }
+    },
+    "reactions": {
+      "hexokinase": {
+        "id": "rate-hexokinase",
+        "parent_module": "orchestrateGlycolysis",
+        "display_name": "己糖激酶 (HK)",
+        "rate_key": "hexokinase",
+        "flux": {
+          "glucose": -1.0,
+          "atp": -1.0,
+          "g6p": 1.0,
+          "adp": 1.0
+        },
+        "regulation": "受 G6P 变构抑制，受葡萄糖浓度驱动"
+      },
+      "pfk1": {
+        "id": "rate-pfk1",
+        "parent_module": "orchestrateGlycolysis",
+        "display_name": "磷酸果糖激酶-1",
+        "rate_key": "pfk1",
+        "flux": {
+          "f6p": -1.0,
+          "atp": -1.0,
+          "f16bp": 1.0,
+          "adp": 1.0
+        },
+        "regulation": "受 ATP/柠檬酸抑制，受 AMP/F26BP 激活"
+      },
+      "betaOxidation": {
+        "id": "rate-betaOxidation",
+        "parent_module": "orchestrateLipidMetabolism",
+        "display_name": "脂肪酸 β-氧化",
+        "rate_key": "betaOxidation",
+        "flux": {
+          "fatty_acid": -1.0,
+          "nad": -1.0,
+          "fad": -1.0,
+          "acetyl_coa": 1.0,
+          "nadh": 1.0,
+          "fadh2": 1.0
+        },
+        "regulation": "受丙二酰辅酶A抑制"
+      }
+    }
+  }

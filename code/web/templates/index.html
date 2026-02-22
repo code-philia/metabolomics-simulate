@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>肝脏代谢数字化孪生系统</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        :root { --bg: #0b0b0b; --card: #1a1a1a; --accent: #4dabf7; --meta-color: #fcc419; --warn: #ff3e3e; --in-color: #51cf66; --out-color: #ff6b6b; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #ddd; display: flex; margin: 0; height: 100vh; overflow: hidden; }
+        
+        /* 左侧面板 */
+        #sidebar { width: 280px; padding: 20px; background: #151515; border-right: 1px solid #333; overflow-y: auto; z-index: 10; }
+        .event-box { background: #222; border: 1px solid #444; padding: 10px; margin-bottom: 10px; border-radius: 6px; position: relative; display: flex; flex-wrap: wrap; gap: 5px; }
+        .event-box label { font-size: 11px; color: #888; display: block; }
+        .event-box input, .event-box select { width: 100%; background: #000; border: 1px solid #444; color: #fff; border-radius: 4px; padding: 3px; }
+        .remove-btn { position: absolute; right: -5px; top: -5px; background: var(--warn); color: #fff; width: 16px; height: 16px; border-radius: 50%; cursor: pointer; text-align: center; line-height: 14px; font-size: 10px; }
+
+        /* 中间主容器：重构排版为紧凑列 */
+        #main-wrapper { flex: 1; overflow-y: auto; background: #0f0f0f; position: relative; }
+        #viz-root { 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: row; 
+            align-items: flex-start; 
+            gap: 20px; 
+        }
+        /* 每一列独立排版，不强制行对齐 */
+        .viz-column { flex: 1; display: flex; flex-direction: column; gap: 15px; min-width: 250px; }
+
+        /* 模块样式：内部设为两列 */
+        .module-node { background: rgba(255,255,255,0.03); border: 1px solid #333; border-radius: 8px; width: 100%; transition: all 0.3s; }
+        .module-title { background: #252525; padding: 8px; cursor: pointer; text-align: center; font-weight: bold; border-radius: 8px 8px 0 0; font-size: 0.9em; }
+        .children { padding: 10px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; align-items: start; }
+        .collapsed > .children { display: none !important; }
+
+        /* 反应卡片 */
+        .reaction-card { background: var(--card); border: 1px solid #444; border-radius: 6px; padding: 10px; transition: all 0.2s; cursor: pointer; position: relative; grid-column: span 1; }
+        .reaction-card:hover { border-color: #666; }
+        .rate-val { font-family: monospace; font-size: 1.05em; color: var(--accent); margin: 4px 0; }
+
+        /* 子反应展开后的输入输出区分 */
+        .reaction-details { display: none; margin-top: 8px; border-top: 1px dashed #444; padding-top: 8px; text-align: left; }
+        .reaction-card.expanded .reaction-details { display: block; }
+        .detail-badge { 
+            display: inline-block; padding: 2px 5px; border-radius: 3px; font-size: 0.75em; margin: 2px; 
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .badge-in { background: rgba(81, 207, 102, 0.2); color: #8ce99a; border-color: var(--in-color); }
+        .badge-out { background: rgba(255, 107, 107, 0.2); color: #ff8787; border-color: var(--out-color); }
+
+        /* 右侧面板 */
+        #metabolite-panel { width: 250px; background: #151515; border-left: 1px solid #333; padding: 20px; overflow-y: auto; z-index: 10; }
+        .meta-item { 
+            background: #222; 
+            border: 2px solid #444; 
+            border-radius: 8px; 
+            padding: 12px; 
+            margin-bottom: 10px; 
+            cursor: pointer; 
+            transition: border 0.3s, box-shadow 0.3s; /* 背景色不设过渡，防止卡顿 */
+        }
+        .meta-item.active { border-color: var(--meta-color); box-shadow: 0 0 10px rgba(252, 196, 25, 0.2); }
+
+        /* 越限警告样式：仅针对边框、阴影和文字颜色，不触碰背景色 */
+        .meta-item.warning { 
+            border: 2px solid var(--warn) !important; 
+            box-shadow: 0 0 15px rgba(255, 62, 62, 0.5);
+        }
+        .meta-item.warning .meta-name { color: var(--warn); }
+        .meta-item.warning .meta-val { color: var(--warn); font-weight: bold; }
+
+        .meta-name { font-size: 0.8em; color: var(--meta-color); font-weight: bold; transition: color 0.3s; }
+        .meta-val { font-family: monospace; font-size: 1.2em; transition: color 0.3s; }
+
+        #svg-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; }
+        .flux-line { fill: none; stroke-dasharray: 8, 4; opacity: 0.7; transition: stroke-width 0.2s; }
+        button { width: 100%; padding: 10px; background: var(--accent); border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; color: #000; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h3>模拟配置</h3>
+    <label>总时长 (min)</label>
+    <input type="number" id="total_duration" value="120">
+    <h3 style="margin-top:20px;">事件调度</h3>
+    <div id="event-list"></div>
+    <button id="add-event-btn" onclick="addEvent()">+ 添加注入事件</button>
+    <button onclick="startSimulation()" style="background: #40c057; margin-top: 20px; color: white;">▶ 开始模拟</button>
+    <div id="timer" style="margin-top:20px; text-align:center; color: var(--accent); font-size: 1.2em;">时间: 0 min</div>
+</div>
+
+<div id="main-wrapper">
+    <div id="viz-root">
+        </div>
+</div>
+
+<div id="metabolite-panel"><h3>物质浓度</h3><div id="meta-list"></div></div>
+<svg id="svg-overlay"></svg>
+
+<script>
+    const socket = io();
+    let config = null;
+    let selectedMetabolite = null;
+    let allMetaboliteKeys = [];
+
+    window.onload = async () => {
+        const response = await fetch('/get_config');
+        config = await response.json();
+        
+        const metas = new Set();
+        Object.values(config.reactions).forEach(r => Object.keys(r.flux).forEach(m => metas.add(m)));
+        allMetaboliteKeys = Array.from(metas).sort();
+
+        renderTree();
+        initMetabolites();
+        addEvent(); 
+        
+        document.getElementById('main-wrapper').onscroll = updateLines;
+        window.onresize = updateLines;
+    };
+
+    function addEvent() {
+        const options = allMetaboliteKeys.map(m => `<option value="${m}">${m}</option>`).join('');
+        const div = document.createElement('div');
+        div.className = 'event-box';
+        div.innerHTML = `<span class="remove-btn" onclick="this.parentElement.remove()">✕</span>
+            <div style="flex:1"><label>时刻</label><input type="number" class="ev-time" value="10"></div>
+            <div style="flex:2"><label>物质</label><select class="ev-sub">${options}</select></div>
+            <div style="flex:1"><label>剂量</label><input type="number" class="ev-amt" value="5"></div>`;
+        document.getElementById('event-list').appendChild(div);
+    }
+
+    function buildNode(id) {
+        if (config.reactions[id]) {
+            const r = config.reactions[id];
+            const card = document.createElement('div');
+            card.className = 'reaction-card';
+            card.id = `card-${r.rate_key}`;
+            card.onclick = (e) => { 
+                e.stopPropagation();
+                card.classList.toggle('expanded'); 
+                setTimeout(updateLines, 50); 
+            };
+
+            // 区分输入输出 Badge
+            const detailHtml = Object.entries(r.flux).map(([m, coeff]) => {
+                const typeClass = coeff < 0 ? 'badge-in' : 'badge-out';
+                const label = coeff < 0 ? '消耗' : '产出';
+                return `<div class="detail-badge ${typeClass}">${m} (${label})</div>`;
+            }).join('');
+
+            card.innerHTML = `<div style="font-size:0.85em; font-weight:600;">${r.display_name}</div>
+                <div class="rate-val" id="rate-${r.rate_key}">0.0000</div>
+                <div class="reaction-details">${detailHtml}</div>`;
+            return card;
+        }
+
+        const data = config.hierarchy[id];
+        const container = document.createElement('div');
+        container.className = 'module-node';
+        const title = document.createElement('div');
+        title.className = 'module-title';
+        title.innerText = data.label;
+        title.onclick = (e) => { 
+            e.stopPropagation();
+            container.classList.toggle('collapsed'); 
+            setTimeout(updateLines, 50); 
+        };
+        const childrenDiv = document.createElement('div');
+        childrenDiv.className = 'children';
+        
+        // 子模块排列：递归渲染
+        data.children.forEach(cid => {
+            if(config.hierarchy[cid] || config.reactions[cid]) {
+                childrenDiv.appendChild(buildNode(cid));
+            }
+        });
+        
+        container.appendChild(title);
+        container.appendChild(childrenDiv);
+        return container;
+    }
+
+    function renderTree() {
+        const root = document.getElementById('viz-root');
+        root.innerHTML = '';
+        const topLevels = Object.keys(config.hierarchy).filter(id => 
+            !Object.values(config.hierarchy).some(h => h.children.includes(id)));
+        
+        // 创建三列布局实现紧凑排版
+        const colCount = 3;
+        const columns = [];
+        for(let i=0; i<colCount; i++) {
+            const col = document.createElement('div');
+            col.className = 'viz-column';
+            root.appendChild(col);
+            columns.push(col);
+        }
+
+        topLevels.forEach((id, index) => {
+            columns[index % colCount].appendChild(buildNode(id));
+        });
+    }
+
+    function initMetabolites() {
+        const list = document.getElementById('meta-list');
+        allMetaboliteKeys.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'meta-item'; div.id = `meta-${m}`;
+            div.innerHTML = `<div class="meta-name">${m.toUpperCase()}</div><div class="meta-val" id="val-${m}">0.00</div>`;
+            div.onclick = () => {
+                document.querySelectorAll('.meta-item').forEach(el => el.classList.remove('active'));
+                selectedMetabolite = (selectedMetabolite === m) ? null : m;
+                if(selectedMetabolite) div.classList.add('active');
+                updateLines();
+            };
+            list.appendChild(div);
+        });
+    }
+
+    socket.on('rate_update', (data) => {
+        document.getElementById('timer').innerText = `时间: ${data.minute} min`;
+        
+        Object.entries(data.rates).forEach(([key, val]) => {
+            const el = document.getElementById(`rate-${key}`);
+            const card = document.getElementById(`card-${key}`);
+            if (el && card) {
+                el.innerText = val.toFixed(4);
+                
+                // 增加对 0 的精确判断
+                if (Math.abs(val) < 0.00001) { 
+                    // 速率为 0：恢复默认深色背景，边框变淡
+                    card.style.backgroundColor = `var(--card)`;
+                    card.style.borderColor = `#444`;
+                } else {
+                    const clamped = Math.max(-0.1, Math.min(0.1, val));
+                    const intensity = Math.abs(clamped) / 0.1;
+                    
+                    if (val > 0) {
+                        // 正值：蓝色
+                        card.style.backgroundColor = `rgba(77, 171, 247, ${intensity * 0.3})`;
+                        card.style.borderColor = `rgba(77, 171, 247, ${0.3 + intensity * 0.4})`;
+                    } else {
+                        // 负值：红色
+                        card.style.backgroundColor = `rgba(255, 62, 62, ${intensity * 0.3})`;
+                        card.style.borderColor = `rgba(255, 62, 62, ${0.3 + intensity * 0.4})`;
+                    }
+                }
+            }
+        });
+        
+        Object.entries(data.metabolites).forEach(([m, val]) => {
+            const el = document.getElementById(`val-${m}`);
+            const box = document.getElementById(`meta-${m}`);
+            if (el && box) {
+                el.innerText = val.toFixed(2);
+                const constraint = config.constraints[m];
+                if (constraint) {
+                    const {min, max} = constraint;
+                    if (val < min || val > max) box.classList.add('warning');
+                    else box.classList.remove('warning');
+                    const rangePercent = Math.max(0, Math.min(1, (val - min) / (max - min)));
+                    box.style.backgroundColor = `rgba(252, 196, 25, ${rangePercent * 0.4})`;
+                }
+            }
+        });
+        if (selectedMetabolite) updateLines();
+    });
+
+    function updateLines() {
+        const svg = document.getElementById('svg-overlay');
+        svg.innerHTML = '';
+        if (!selectedMetabolite) return;
+        const metaEl = document.getElementById(`meta-${selectedMetabolite}`);
+        if(!metaEl) return;
+        const mRect = metaEl.getBoundingClientRect();
+
+        Object.values(config.reactions).forEach(r => {
+            const coeff = r.flux[selectedMetabolite];
+            const card = document.getElementById(`card-${r.rate_key}`);
+            if (coeff === undefined || !card || card.offsetParent === null) return;
+            
+            const cRect = card.getBoundingClientRect();
+            const rateVal = parseFloat(document.getElementById(`rate-${r.rate_key}`).innerText) || 0;
+
+            // 逻辑修改：
+            // 绿色线 = 反应从池中拿取 (coeff < 0)
+            // 红色线 = 反应向池中输出 (coeff > 0)
+            const isTakingFromPool = coeff < 0;
+            
+            // 确定起点终点坐标 (连接到卡片右侧)
+            const cardX = cRect.right;
+            const cardY = cRect.top + cRect.height/2;
+            const poolX = mRect.left;
+            const poolY = mRect.top + mRect.height/2;
+
+            let sX, sY, eX, eY, color;
+
+            if (isTakingFromPool) {
+                // 物质 -> 反应 (拿取)
+                sX = poolX; sY = poolY;
+                eX = cardX; eY = cardY;
+                color = "#51cf66"; // 绿色
+            } else {
+                // 反应 -> 物质 (输出)
+                sX = cardX; sY = cardY;
+                eX = poolX; eY = poolY;
+                color = "#ff6b6b"; // 红色
+            }
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            // 贝塞尔曲线控制点
+            const cp1x = sX + (eX - sX) * 0.5;
+            const cp2x = sX + (eX - sX) * 0.5;
+            
+            path.setAttribute("d", `M ${sX} ${sY} C ${cp1x} ${sY}, ${cp2x} ${eY}, ${eX} ${eY}`);
+            path.setAttribute("class", "flux-line");
+            path.setAttribute("stroke", color);
+            
+            // 粗细代表速率绝对值
+            const thickness = 1 + Math.min(Math.abs(rateVal) * 20, 8);
+            path.setAttribute("stroke-width", thickness);
+            svg.appendChild(path);
+        });
+    }
+
+    function startSimulation() {
+        const events = Array.from(document.querySelectorAll('.event-box')).map(el => ({
+            time: el.querySelector('.ev-time').value,
+            substance: el.querySelector('.ev-sub').value,
+            amount: el.querySelector('.ev-amt').value
+        }));
+        socket.emit('start_simulation', {
+            duration: document.getElementById('total_duration').value,
+            events: events
+        });
+    }
+</script>
+</body>
+</html>

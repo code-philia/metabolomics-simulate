@@ -402,6 +402,25 @@ def pyruvate_destination_logic(ctx: Ctx) -> Dict[str, float]:
         "nad_plus": lactate_rate# * 0.5 必须为1倍，与PK步的消耗平衡
     }
 
+def pentosePhosphatePathway(ctx: Ctx) -> Dict[str, float]:
+    g6p = ctx.env.getMetabolite("g6p")
+    nadp_plus = ctx.env.getMetabolite("nadp_plus")
+    # 1. 调节逻辑：受 G6P 浓度驱动，并受 NADPH/NADP+ 比例的反馈抑制
+    # 如果 NADPH 已经很多了，PPP 就会减速（反馈抑制）
+    nadph = ctx.env.getMetabolite("nadph")
+    feedback_inhibition = 0.1 / (nadph / (nadp_plus + 1e-6) + 0.1)
+    v_max = 0.15 # 速率通常约为糖酵解的 10%-20%
+    rate = ctx.rate_modifier * v_max * (g6p / (g6p + 1.0)) * (nadp_plus / (nadp_plus + 0.1)) * feedback_inhibition
+    # 2. 安全限制：单步不要抽干 G6P
+    actual_rate = min(rate, g6p * 0.1)
+    ctx.env.recordRate("PPP", actual_rate)
+    # 生理计量比：1 G6P 理论上通过氧化阶段产生 2 NADPH
+    return {
+        "g6p": -actual_rate,
+        "nadp_plus": -actual_rate * 2.0,
+        "nadph": actual_rate * 2.0
+    }
+
 def fattyAcidSynthesis(ctx: Ctx) -> Dict[str, float]:
     insulin = ctx.env.getSignal("insulin")
     glucagon = ctx.env.getSignal("glucagon")
@@ -423,6 +442,7 @@ def fattyAcidSynthesis(ctx: Ctx) -> Dict[str, float]:
         "fatty_acid": rate, 
         "cholesterol": chol_rate,          # 产生胆固醇
         "nadph": -(rate * 0.5 + chol_rate * 0.8), # 胆固醇合成对还原当量需求更高
+        "nadp_plus": (rate * 0.5 + chol_rate * 0.8), # <--- 关键补全：把“空车”放回池子
         "atp": -(rate * 0.2 + chol_rate * 0.3),
         "adp": (rate * 0.2 + chol_rate * 0.3)
     }
@@ -461,7 +481,14 @@ def deNovoLipogenesis(ctx: Ctx) -> Dict[str, float]:
     base = ctx.rate_modifier * (0.02 + 0.08 * insulin * ins_sens) * excess * min(glucose, atp * 0.5, nadph * 0.5)
     rate = base * lipogenesis_act * synth_avail * 0.8
     ctx.env.recordRate("deNovoLipogenesis", rate)
-    return {"glucose": -rate, "fatty_acid": rate, "atp": -rate * 0.2, "adp": rate * 0.2, "nadph": -rate * 0.5}
+    return {
+        "glucose": -rate, 
+        "fatty_acid": rate, 
+        "atp": -rate * 0.2, 
+        "adp": rate * 0.2, 
+        "nadph": -rate * 0.5,
+        "nadp_plus": rate * 0.5 # <--- 关键补全：把“空车”放回池子
+    }
 
 def lipidTransport(ctx: Ctx) -> Dict[str, float]:
     insulin = ctx.env.getSignal("insulin")
@@ -584,24 +611,6 @@ def urea_cycle(ctx: Ctx) -> Dict[str, float]:
         "atp": -rate * 4.0,  # 消耗 4 个 ATP
         "adp": rate * 4.0,
         "urea": rate,
-    }
-
-
-def aminoAcidSynthesisTransport(ctx: Ctx) -> Dict[str, float]:
-    # 氨基酸合成蛋白与转运
-    aa = ctx.env.getMetabolite("amino_acid")
-    atp = ctx.env.getMetabolite("atp")
-    ins = ctx.env.getSignal("insulin")
-    v_max = 0.02 * (0.5 + ins)
-    substrate = min(aa, atp)
-    rate = ctx.rate_modifier * v_max * substrate
-    ctx.env.recordRate("aminoAcidSynthesisTransport", rate)
-    return {
-        "amino_acid": -rate,
-        "albumin": rate * 0.6,
-        "clotting_factor": rate * 0.4,
-        "atp": -rate * 0.2,
-        "adp": rate * 0.2,
     }
 
 def glutamineShunt(ctx: Ctx) -> Dict[str, float]:
@@ -854,7 +863,7 @@ def phaseI_OxRed(ctx: Ctx) -> Dict[str, float]:
     liver_fn = ctx.env.getParameter("liver_function")
     rate = ctx.rate_modifier * min(xen, nadph) * 0.1 * liver_fn
     ctx.env.recordRate("phaseI_OxRed", rate)
-    return {"phaseI_intermediates": rate, "nadph": -rate}
+    return {"phaseI_intermediates": rate, "nadph": -rate, "nadp_plus": rate}
 
 def phaseII_Conjugation(ctx: Ctx) -> Dict[str, float]:
     inter = ctx.env.getMetabolite("phaseI_intermediates")
@@ -915,24 +924,79 @@ def acetate_to_acetylcoa(ctx: Ctx) -> Dict[str, float]:
 
 def bileAcidSynthesis(ctx: Ctx) -> Dict[str, float]:
     chol = ctx.env.getMetabolite("cholesterol")
-    rate = ctx.rate_modifier * min(chol, 5.0) * 0.02
+    atp = ctx.env.getMetabolite("atp")
+    # 1. 能量保护：合成胆汁酸需要消耗能量（结合反应等）
+    # 当 ATP 低于 2.0 时，这种非即时生存必须的合成会减速
+    energy_guard = 1.0 / (1.0 + np.exp(-5.0 * (atp - 2.0)))
+    # 2. 米氏动力学：代替 min(chol, 5.0)，让曲线更圆滑
+    km_chol = 5.0
+    v_max = 0.1  # 适当调整最大速率
+    rate = ctx.rate_modifier * v_max * (chol / (chol + km_chol)) * energy_guard
     ctx.env.recordRate("bileAcidSynthesis", rate)
-    return {"cholesterol": -rate, "bile_acid": rate}
+    # 3. 真实生理中，合成胆汁酸是消耗 ATP 的
+    return {
+        "cholesterol": -rate, 
+        "bile_acid": rate,
+        "atp": -rate * 0.5, # 模拟结合反应的能耗
+        "adp": rate * 0.5
+    }
+
+def bileExcretion(ctx: Ctx) -> Dict[str, float]:
+    ba = ctx.env.getMetabolite("bile_acid")
+    insulin = ctx.env.getSignal("insulin")
+    # 进食（胰岛素升高）通常伴随胆囊收缩，胆汁排出增加
+    # 这里的逻辑模拟胆汁排泄受进食信号的驱动
+    base_clearance = 0.05
+    digestion_boost = 0.15 * (insulin / (insulin + 0.2))
+    # 速率与当前肝内胆汁酸浓度成正比
+    rate = (base_clearance + digestion_boost) * ba
+    # 限制单步最大排出量，防止数值震荡
+    actual_rate = min(rate, ba * 0.2)
+    ctx.env.recordRate("bileExcretion", actual_rate)
+    return {"bile_acid": -actual_rate}
 
 def plasmaProteinSynthesis(ctx: Ctx) -> Dict[str, float]:
     aa = ctx.env.getMetabolite("amino_acid")
     atp = ctx.env.getMetabolite("atp")
-    post = 1.0 if bool(ctx.env.getParameter("is_postprandial")) else 0.0
-    rate = ctx.rate_modifier * (1.0 + 0.5 * post) * min(aa, atp) * 0.005
+    alb = ctx.env.getMetabolite("albumin")
+    ins = ctx.env.getSignal("insulin")
+    # 1. 能量门槛保护 (ATP < 2.0 时迅速减速)
+    energy_guard = 1.0 / (1.0 + np.exp(-5.0 * (atp - 2.0)))
+    # 2. 负反馈调节：白蛋白够了就减速 (设定稳态上限为 100.0)
+    capacity_limit = max(0, 1.0 - (alb / 100.0))
+    # 3. 动力学计算 (受胰岛素调节)
+    v_max = 0.01
+    rate = ctx.rate_modifier * v_max * (aa / (aa + 5.0)) * (0.5 + 0.5 * ins) * energy_guard * capacity_limit
     ctx.env.recordRate("plasmaProteinSynthesis", rate)
-    return {"amino_acid": -rate, "albumin": rate, "atp": -rate * 0.2}
+    # 4. 修正能耗：蛋白合成非常耗能，提高 atp 扣除比例
+    return {
+        "amino_acid": -rate, 
+        "albumin": rate, 
+        "atp": -rate * 4.0,  # 模拟肽键合成的高能耗
+        "adp": rate * 4.0
+    }
 
 def coagulationFactorSynthesis(ctx: Ctx) -> Dict[str, float]:
     aa = ctx.env.getMetabolite("amino_acid")
     atp = ctx.env.getMetabolite("atp")
-    rate = ctx.rate_modifier * min(aa, atp) * 0.01
-    ctx.env.recordRate("coagulationFactorSynthesis", rate)
-    return {"amino_acid": -rate, "clotting_factor": rate, "atp": -rate * 0.1}
+    cf = ctx.env.getMetabolite("clotting_factor")
+    # 1. 同样的能量保护
+    energy_guard = 1.0 / (1.0 + np.exp(-5.0 * (atp - 1.8)))
+    # 2. 严密的容量限制 (稳态上限设为 10.0)
+    capacity_limit = max(0, 1.0 - (cf / 10.0))
+    v_max = 0.005
+    rate = ctx.rate_modifier * v_max * (aa / (aa + 2.0)) * energy_guard * capacity_limit
+    # 3. 引入速率平滑，防止由于 AA 波动导致的数值波动
+    prev = ctx.env.getMetabolite("mem_rate_cf")
+    smooth_rate = prev + 0.1 * (rate - prev)
+    ctx.env.setMetabolite("mem_rate_cf", smooth_rate)
+    ctx.env.recordRate("coagulationFactorSynthesis", smooth_rate)
+    return {
+        "amino_acid": -smooth_rate, 
+        "clotting_factor": smooth_rate, 
+        "atp": -smooth_rate * 4.0,
+        "adp": smooth_rate * 4.0
+    }
 
 def orchestrateGlycogenSynthesis(ctx: Ctx) -> Dict[str, float]:
     # 糖原合成 - 修复震荡问题
@@ -1075,7 +1139,6 @@ def orchestrateAminoAcidMetabolism(ctx: Ctx) -> Dict[str, float]:
     o2 = aa_catabolism_step(ctx)
     # o3 = glutamineShunt(ctx)
     # o4 = glucoseAlanineCycle(ctx)
-    # o5 = aminoAcidSynthesisTransport(ctx)
     o6 = metabolite_export(ctx)
     outputs: Dict[str, float] = {}
     for o in (o1, o2, o6):
@@ -1141,10 +1204,11 @@ def orchestrateDetoxification(ctx: Ctx) -> Dict[str, float]:
 
 def orchestrateSynthesisSecretion(ctx: Ctx) -> Dict[str, float]:
     o1 = bileAcidSynthesis(ctx)
-    o2 = plasmaProteinSynthesis(ctx)
-    o3 = coagulationFactorSynthesis(ctx)
+    o2 = bileExcretion(ctx)
+    o3 = plasmaProteinSynthesis(ctx)
+    o4 = coagulationFactorSynthesis(ctx)
     outputs = {}
-    for o in (o1, o2, o3):
+    for o in (o1, o2, o3, o4):
         for k, v in o.items():
             outputs[k] = outputs.get(k, 0.0) + v
     ctx.write(outputs)
@@ -1271,7 +1335,7 @@ class LiverMetabolismSystem:
 
             orchestrateAminoAcidMetabolism,
             orchestrateUreaCycle,
-            # orchestrateSynthesisSecretion,
+            orchestrateSynthesisSecretion,
             orchestrateDetoxification,
         ]
         with ThreadPoolExecutor(max_workers=len(tasks)) as ex:
