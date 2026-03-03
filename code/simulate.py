@@ -93,9 +93,23 @@ class MetabolicEnvironment:
         self.history = []
         self.current_rates = {}
 
+    # def update_history(self, t):
+    #     rate_fields = {f"rate_{k}": float(v) for k, v in self.current_rates.items()}
+    #     record = {**self.metabolites, **self.signals, **self.parameters, **rate_fields, "time": t}
+    #     self.history.append(record)
+    #     self.current_rates.clear()
     def update_history(self, t):
         rate_fields = {f"rate_{k}": float(v) for k, v in self.current_rates.items()}
-        record = {**self.metabolites, **self.signals, **self.parameters, **rate_fields, "time": t}
+        # 增加 audit 字段
+        audit_data = getattr(self, 'last_step_audit', {})
+        record = {
+            **self.metabolites, 
+            **self.signals, 
+            **self.parameters, 
+            **rate_fields, 
+            "audit": audit_data, # <--- 核心：记录因果关系
+            "time": t
+        }
         self.history.append(record)
         self.current_rates.clear()
 
@@ -124,12 +138,13 @@ class MetabolicEnvironment:
     def recordRate(self, name: str, rate: float) -> None:
         self.current_rates[name] = float(rate)
 
-
 class Ctx:
     def __init__(self, env: MetabolicEnvironment):
         self.env = env
         self.rate_modifier = 1.0
         self.last_outputs: Dict[str, Any] = {}
+        self.reaction_name = "unknown" # 标记当前是哪个反应在运行
+        self.audit_log = {} # 新增：记录单步内的详细贡献
 
     def control(self, ccId: str) -> bool:
         if ccId == "postprandial":
@@ -143,6 +158,9 @@ class Ctx:
     def write(self, outputs: Dict[str, float]) -> None:
         self.env.writeOutputs(outputs)
         self.last_outputs = outputs
+        # --- 自动审计：记录该反应对每个物质的贡献 ---
+        for metabolite, delta in outputs.items():
+            self.audit_log[metabolite] = delta
 
 class ResourcePool:
     def __init__(self, env: MetabolicEnvironment):
@@ -1338,13 +1356,56 @@ class LiverMetabolismSystem:
             orchestrateSynthesisSecretion,
             orchestrateDetoxification,
         ]
-        with ThreadPoolExecutor(max_workers=len(tasks)) as ex:
-            futs = [ex.submit(fn, rctx) for fn in tasks]
-            for f in futs:
-                _ = f.result()
+        # with ThreadPoolExecutor(max_workers=len(tasks)) as ex:
+        #     futs = [ex.submit(fn, rctx) for fn in tasks]
+        #     for f in futs:
+        #         _ = f.result()
+        # drained = pool.drain()
+        # self.env.writeOutputs(drained["metabolites"])
+        # for s, v in drained["signals"].items():
+        #     self.env.setSignal(s, v)
+        # self.env.current_rates.update({k: float(v) for k, v in drained.get("rates", {}).items()})
+        # self.env.update_history(t)
+
+        # 用于存储本步所有反应的审计数据
+        # 结构: { "function_name": { "metabolite_a": delta, ... }, ... }
+        step_audit_log = {}
+
+        # 3. 执行任务
+        # 注意：为了审计，我们在这里包装一层逻辑，拦截每个函数的 write
+        def wrapper_fn(fn):
+            # 创建一个带有审计功能的上下文
+            # 自动使用 fn.__name__ 作为标识符
+            rctx = Ctx(renv)
+            # 覆盖 rctx.write 方法以拦截输出
+            original_write = rctx.write
+            rxn_name = fn.__name__
+            
+            def audited_write(outputs: Dict[str, float]):
+                # 记录到审计日志
+                if rxn_name not in step_audit_log:
+                    step_audit_log[rxn_name] = {}
+                for k, v in outputs.items():
+                    step_audit_log[rxn_name][k] = step_audit_log[rxn_name].get(k, 0.0) + v
+                # 执行原始写入
+                original_write(outputs)
+            
+            rctx.write = audited_write
+            fn(rctx)
+        # 如果需要保持线程安全并记录审计，建议在此处按顺序执行或加锁
+        # 这里为了审计数据的完整性，采用顺序执行或确保 step_audit_log 线程安全
+        for fn in tasks:
+            wrapper_fn(fn)
+
+        # 4. 汇总并写入环境
         drained = pool.drain()
         self.env.writeOutputs(drained["metabolites"])
         for s, v in drained["signals"].items():
             self.env.setSignal(s, v)
+            
+        # 更新当前速率（用于绘图）
         self.env.current_rates.update({k: float(v) for k, v in drained.get("rates", {}).items()})
+        
+        # 将详细审计日志存入环境，随 update_history 进入 history 列表
+        self.env.last_step_audit = step_audit_log 
         self.env.update_history(t)

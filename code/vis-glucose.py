@@ -1,5 +1,6 @@
 import os
 from utils import run_metabolic_simulation, generate_dashboard, run_metabolic_tests
+from analyzer import MetabolismTracer
 
 # --- 可视化配置 ---
 # 格式: (代谢物名, 显示标签, 颜色, 是否使用次坐标轴)
@@ -64,18 +65,21 @@ def setup_nafld_case(env, system, hour, minute):
 
 if __name__ == "__main__":
     # 1. 运行正常场景模拟
-    hist_normal = run_metabolic_simulation(setup_normal_case, hours=15)
-    
-    # 运行约束测试
-    run_metabolic_tests(hist_normal, title="正常场景 - 代谢约束测试")
+    hist_normal = run_metabolic_simulation(setup_normal_case, hours=10)
 
-    generate_dashboard(
-        hist_normal, 
-        "../results/results-html/glucose_normal.html",
-        concentrations=GLUCOSE_CONCENTRATIONS,
-        rates=GLUCOSE_RATES,
-        dashboard_title="肝脏代谢模拟 - 正常场景"
-    )
+    tracer = MetabolismTracer(hist_normal)
+    tracer.trace_range("atp", t_start=6.0, t_end=6.5)
+    
+    # # 运行约束测试
+    # run_metabolic_tests(hist_normal, title="正常场景 - 代谢约束测试")
+
+    # generate_dashboard(
+    #     hist_normal, 
+    #     "../results/results-html/glucose_normal.html",
+    #     concentrations=GLUCOSE_CONCENTRATIONS,
+    #     rates=GLUCOSE_RATES,
+    #     dashboard_title="肝脏代谢模拟 - 正常场景"
+    # )
     
     # 2. 运行 NAFLD 场景模拟
     # hist_nafld = run_metabolic_simulation(setup_nafld_case, hours=24)

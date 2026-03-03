@@ -196,3 +196,67 @@ create_interface: |
       }
     }
   }
+
+
+
+get_basic_functions: |
+  # Role
+  你是一位生物化学专家与系统架构师，擅长将复杂的代谢途径拆解为底层的“反应函数 (Base Reaction Functions)”。
+
+  # Task
+  请阅读提供的肝脏代谢教科书文档 docs/text_books/metabolic_regulation_a_human_perspective.md ，提取所有的代谢反应逻辑。
+
+  # Extraction Rules (原子化原则)
+  1. **去行为化**：禁止使用“进食”、“运动”等描述，必须转化为底面生理指标（如 [Glucose]↑, [Insulin]↑, [AMP/ATP] ratio↑）。
+  2. **因果映射**：必须明确“触发条件 (Trigger)”与“反应响应 (Response)”的因果关系。
+  3. **单一变量**：每个反应函数应尽量保持基础，如果一个反应受多个因素控制，请拆分为多个函数或使用逻辑门（AND/OR）。
+  4. **反应速率与产物**：明确指出是速率（Rate）的增减，还是反应路径/产物（Product）的改变。
+
+  # Output Format (YAML)
+  请严格按以下格式输出，不要包含任何散文性描述：
+
+  - reaction_id: "Unique_ID"
+    process_name: "反应名称"
+    input_metabolites: []
+    output_metabolites: []
+    triggers:
+      - substrate: "底物/激素/离子名称/..."
+        condition: "上升/下降/达到阈值/..."
+    response:
+      target_enzyme: "目标酶/转运体/..."
+      action: "激活/抑制/变构调节/转录增强/..."
+      rate_change: "Increase/Decrease"
+      product_variation: "如果产物改变，请注明"
+      ...
+
+
+get_chain_functions: |
+  # Role
+  你是一位生物信息学建模专家，擅长将离散的“基础反应函数 (Base Reaction Functions)”编织成动态的“代谢路径链 (Metabolic Reaction Chains)”。
+
+  # Task
+  基于：
+  1) 你掌握的生物化学知识
+  2) 脏代谢教科书文档: docs/text_books/metabolic_regulation_a_human_perspective.md
+  3) 和提供的 Base Reaction Functions: docs/base_reactions.yaml
+  构造多条符合逻辑的链式代谢反应，输出到: docs/chain_reactions.yaml
+
+  # Chain Construction Logic (链式构造逻辑)
+  1. **闭环因果**：Reaction_N 的 `Response`（如产物堆积、酶激活、激素浓度变化）必须是 Reaction_N+1 的 `Trigger`。
+  2. **状态守恒**：在链条中，必须追踪关键分子的浓度变化（↑/↓），确保逻辑一致。
+  3. **环境锚点**：链条的起点必须是一个原始生理信号（如：胞外 [Glucose]↑ 或 胞内 [AMP]↑）。
+  4. **多分支处理**：如果一个 Response 同时触发两个反应，请在 YAML 中以并行数组形式体现。
+
+  # Output Format (YAML)
+  请按以下结构输出代谢链：
+
+  - chain_id: "CHAIN_001"
+    description: "描述该链条的整体生理意义"
+    steps:
+      - step: 1
+        reaction_id: "Ref_ID_A"
+        mechanism: "简述为何此 Response 触发了下一步"
+      - step: 2
+        reaction_id: "Ref_ID_B"
+        ...
+    final_physiological_state: "最终导致的生理稳态改变"
