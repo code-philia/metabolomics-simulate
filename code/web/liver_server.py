@@ -26,7 +26,9 @@ class WebMetabolicEnvironment(MetabolicEnvironment):
 
     def update_history(self, t):
         self.last_step_rates = {k: float(v) for k, v in self.current_rates.items()}
-        self.last_step_metabolites = {k: float(v) for k, v in self.metabolites.items()}
+        # 合并代谢物和信号
+        combined_metabolites = {**self.metabolites, **self.signals}
+        self.last_step_metabolites = {k: float(v) for k, v in combined_metabolites.items()}
         super().update_history(t)
 
 class WebLiveLiverSystem(LiverMetabolismSystem):
@@ -35,7 +37,8 @@ class WebLiveLiverSystem(LiverMetabolismSystem):
         socketio.emit('rate_update', {
             'minute': total_minutes,
             'rates': self.env.last_step_rates,
-            'metabolites': self.env.last_step_metabolites
+            'metabolites': self.env.last_step_metabolites,
+            'audit': getattr(self.env, 'last_step_audit', {})
         })
         socketio.sleep(0.02)
 

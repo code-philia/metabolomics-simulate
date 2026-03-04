@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>肝脏代谢数字化孪生系统</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
         :root { --bg: #0b0b0b; --card: #1a1a1a; --accent: #4dabf7; --meta-color: #fcc419; --warn: #ff3e3e; --in-color: #51cf66; --out-color: #ff6b6b; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #ddd; display: flex; margin: 0; height: 100vh; overflow: hidden; }
@@ -16,13 +17,51 @@
         .remove-btn { position: absolute; right: -5px; top: -5px; background: var(--warn); color: #fff; width: 16px; height: 16px; border-radius: 50%; cursor: pointer; text-align: center; line-height: 14px; font-size: 10px; }
 
         /* 中间主容器：重构排版为紧凑列 */
-        #main-wrapper { flex: 1; overflow-y: auto; background: #0f0f0f; position: relative; }
+        #main-wrapper { flex: 1; overflow: hidden; background: #0f0f0f; position: relative; display: flex; flex-direction: column; }
+        
+        #top-section {
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            height: 500px; /* 初始总高度：仪表盘350 + 分析区域150 */
+            min-height: 350px;
+        }
+
+        #dashboard-container { 
+            width: 100%; 
+            flex: 0 0 350px; /* 仪表盘固定高度 */
+            background: #111; 
+            border-bottom: 1px solid #333;
+        }
+
+        #analysis-container {
+            padding: 15px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+            overflow-y: auto;
+            flex: 1; /* 分析区域占据剩余空间 */
+            display: none;
+        }
+
+        /* 可拖动分界线 */
+        #resizer {
+            height: 6px;
+            background: #333;
+            cursor: ns-resize;
+            width: 100%;
+            transition: background 0.2s;
+            z-index: 100;
+        }
+        #resizer:hover { background: var(--accent); }
+
         #viz-root { 
             padding: 20px; 
             display: flex; 
             flex-direction: row; 
             align-items: flex-start; 
             gap: 20px; 
+            flex: 1;
+            overflow-y: auto; /* 反应框区域独立滚动 */
         }
         /* 每一列独立排版，不强制行对齐 */
         .viz-column { flex: 1; display: flex; flex-direction: column; gap: 15px; min-width: 250px; }
@@ -49,7 +88,16 @@
         .badge-out { background: rgba(255, 107, 107, 0.2); color: #ff8787; border-color: var(--out-color); }
 
         /* 右侧面板 */
-        #metabolite-panel { width: 250px; background: #151515; border-left: 1px solid #333; padding: 20px; overflow-y: auto; z-index: 10; }
+        #metabolite-panel { width: 250px; background: #151515; border-left: 1px solid #333; padding: 20px; overflow-y: auto; z-index: 10; display: flex; flex-direction: column; }
+        #meta-search-container { margin-bottom: 15px; position: relative; }
+        #meta-search-input { width: 100%; background: #000; border: 1px solid #444; color: #fff; border-radius: 4px; padding: 8px; box-sizing: border-box; }
+        #meta-search-results { 
+            position: absolute; top: 100%; left: 0; right: 0; background: #222; border: 1px solid #444; 
+            max-height: 200px; overflow-y: auto; z-index: 100; display: none; 
+        }
+        .search-result-item { padding: 8px; cursor: pointer; border-bottom: 1px solid #333; }
+        .search-result-item:hover { background: #333; }
+
         .meta-item { 
             background: #222; 
             border: 2px solid #444; 
@@ -57,9 +105,33 @@
             padding: 12px; 
             margin-bottom: 10px; 
             cursor: pointer; 
-            transition: border 0.3s, box-shadow 0.3s; /* 背景色不设过渡，防止卡顿 */
+            transition: all 0.3s;
+            position: relative;
         }
-        .meta-item.active { border-color: var(--meta-color); box-shadow: 0 0 10px rgba(252, 196, 25, 0.2); }
+        .meta-item.active {
+            transform: scale(1.05);
+            border-color: var(--accent);
+        }
+        .meta-item .remove-meta {
+            position: absolute; right: 5px; top: 5px; color: #888; cursor: pointer; font-size: 14px;
+        }
+        .meta-item .remove-meta:hover { color: var(--warn); }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            background: #333;
+            height: 6px;
+            border-radius: 3px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+        }
 
         /* 越限警告样式：仅针对边框、阴影和文字颜色，不触碰背景色 */
         .meta-item.warning { 
@@ -71,6 +143,18 @@
 
         .meta-name { font-size: 0.8em; color: var(--meta-color); font-weight: bold; transition: color 0.3s; }
         .meta-val { font-family: monospace; font-size: 1.2em; transition: color 0.3s; }
+
+        /* 开关样式 */
+        .setting-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.9em; }
+        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; }
+        .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 4px; bottom: 4px; background-color: white; transition: .4s; }
+        input:checked + .slider { background-color: var(--accent); }
+        input:focus + .slider { box-shadow: 0 0 1px var(--accent); }
+        input:checked + .slider:before { transform: translateX(14px); }
+        .slider.round { border-radius: 20px; }
+        .slider.round:before { border-radius: 50%; }
 
         #svg-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; }
         .flux-line { fill: none; stroke-dasharray: 8, 4; opacity: 0.7; transition: stroke-width 0.2s; }
@@ -88,21 +172,162 @@
     <button id="add-event-btn" onclick="addEvent()">+ 添加注入事件</button>
     <button onclick="startSimulation()" style="background: #40c057; margin-top: 20px; color: white;">▶ 开始模拟</button>
     <div id="timer" style="margin-top:20px; text-align:center; color: var(--accent); font-size: 1.2em;">时间: 0 min</div>
+    
+    <div id="replay-control" style="margin-top:20px;">
+        <label style="font-size:0.8em; color:#888;">模拟重放进度</label>
+        <input type="range" id="progress-slider" min="0" max="0" value="0" style="width:100%; margin-top:5px;">
+    </div>
+
+    <h3 style="margin-top:20px;">显示设置</h3>
+    <div class="setting-item">
+        <label for="toggle-flux-lines">显示物质连线</label>
+        <label class="switch">
+            <input type="checkbox" id="toggle-flux-lines" checked>
+            <span class="slider round"></span>
+        </label>
+    </div>
+    <button onclick="clearAnalysis()" style="background: #868e96; margin-top: 10px;">清空分析标记</button>
 </div>
 
 <div id="main-wrapper">
-    <div id="viz-root">
+    <div id="top-section">
+        <div id="dashboard-container"></div>
+        <div id="analysis-container">
+            <h4 style="margin: 0 0 10px 0; color: var(--accent); display: flex; justify-content: space-between;">
+                <span>追溯分析: <span id="analysis-target">-</span></span>
+                <span id="analysis-range" style="font-size: 0.8em; color: #888;"></span>
+            </h4>
+            <div id="analysis-content" style="font-size: 0.9em; line-height: 1.6; color: #bbb;">
+                等待选择时间段...
+            </div>
         </div>
+    </div>
+    <div id="resizer"></div>
+    <div id="viz-root"></div>
 </div>
 
-<div id="metabolite-panel"><h3>物质浓度</h3><div id="meta-list"></div></div>
+<div id="metabolite-panel">
+    <h3>物质浓度</h3>
+    <div id="meta-search-container">
+        <input type="text" id="meta-search-input" placeholder="搜索物质并添加...">
+        <div id="meta-search-results"></div>
+    </div>
+    <div id="meta-list"></div>
+</div>
 <svg id="svg-overlay"></svg>
 
 <script>
     const socket = io();
     let config = null;
     let selectedMetabolite = null;
+    let highlightedTrace = { index: -1, originalWidth: null };
+    let timeMarkers = [];
     let allMetaboliteKeys = [];
+    let activeMetabolites = new Set(['glucose', 'insulin', 'glucagon']); // 默认显示的物质
+    let dashboardMetabolites = new Set(['glucose', 'insulin', 'glucagon']); // 仪表盘显示的物质
+    let dashboardRates = new Set(['hexokinase']); // 仪表盘显示的反应
+
+    // 仪表盘历史数据
+    let dashboardHistory = {
+        time: [],
+        data: {} // 动态存储 { key: [values] }
+    };
+    let allSimulationFrames = []; // 存储每一帧的完整快照，用于重放
+    let isReplaying = false;
+    let showFluxLines = true;
+
+    function initDashboard() {
+        const traces = [];
+        const currentIndex = parseInt(document.getElementById('progress-slider').value) || 0;
+        const historyTimes = dashboardHistory.time.slice(0, currentIndex + 1);
+
+        // 左侧物质曲线
+        dashboardMetabolites.forEach(m => {
+            const isHormone = m === 'insulin' || m === 'glucagon';
+            traces.push({
+                x: historyTimes,
+                y: dashboardHistory.data[m] ? dashboardHistory.data[m].slice(0, currentIndex + 1) : [],
+                name: m.toUpperCase(),
+                line: { width: 2, dash: isHormone ? 'dot' : 'solid' },
+                xaxis: 'x', yaxis: isHormone ? 'y2' : 'y'
+            });
+        });
+
+        // 右侧反应速率曲线
+        dashboardRates.forEach(r => {
+            traces.push({
+                x: historyTimes,
+                y: dashboardHistory.data[r] ? dashboardHistory.data[r].slice(0, currentIndex + 1) : [],
+                name: `Rate: ${r}`,
+                line: { width: 2 },
+                xaxis: 'x2', yaxis: 'y3'
+            });
+        });
+
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            showlegend: true,
+            legend: { 
+                font: { color: '#aaa', size: 10 }, 
+                orientation: 'h', 
+                y: -0.2,
+                x: 0.5,
+                xanchor: 'center'
+            },
+            xaxis: { 
+                domain: [0, 0.45],
+                title: '时间 (min)', titlefont: { size: 10 },
+                color: '#666', gridcolor: '#222', zeroline: false 
+            },
+            yaxis: { 
+                title: '浓度 (mmol/L)', titlefont: { size: 10 },
+                color: '#666', gridcolor: '#222', zeroline: false 
+            },
+            yaxis2: { 
+                title: '激素强度', titlefont: { size: 10 },
+                color: '#666', overlaying: 'y', side: 'right', 
+                gridcolor: 'transparent', zeroline: false 
+            },
+            xaxis2: { 
+                domain: [0.55, 1],
+                title: '时间 (min)', titlefont: { size: 10 },
+                color: '#666', gridcolor: '#222', zeroline: false 
+            },
+            yaxis3: { 
+                anchor: 'x2',
+                title: '速率 (mmol/L/min)', titlefont: { size: 10 },
+                color: '#666', gridcolor: '#222', zeroline: false 
+            },
+            margin: { t: 40, b: 60, l: 50, r: 50 },
+            annotations: [
+                {
+                    text: "关键代谢物与激素 (双击添加)",
+                    font: { size: 13, color: '#eee', weight: 'bold' },
+                    showarrow: false,
+                    xref: 'paper', yref: 'paper',
+                    x: 0.2, y: 1.1
+                },
+                {
+                    text: "关键反应速率 (双击添加)",
+                    font: { size: 13, color: '#eee', weight: 'bold' },
+                    showarrow: false,
+                    xref: 'paper', yref: 'paper',
+                    x: 0.8, y: 1.1
+                }
+            ]
+        };
+
+        Plotly.newPlot('dashboard-container', traces, layout, {displayModeBar: false});
+
+        document.getElementById('dashboard-container').on('plotly_click', (data) => {
+            if (!selectedMetabolite) return;
+            const point = data.points[0];
+            if (point.xaxis.anchor === 'y') { // 确保点击在物质浓度图上
+                handleTimeMarker(point.x);
+            }
+        });
+    }
 
     window.onload = async () => {
         const response = await fetch('/get_config');
@@ -112,13 +337,347 @@
         Object.values(config.reactions).forEach(r => Object.keys(r.flux).forEach(m => metas.add(m)));
         allMetaboliteKeys = Array.from(metas).sort();
 
+        initDashboard();
+        initSearch();
         renderTree();
         initMetabolites();
         addEvent(); 
         
-        document.getElementById('main-wrapper').onscroll = updateLines;
-        window.onresize = updateLines;
+        const slider = document.getElementById('progress-slider');
+        slider.oninput = () => {
+            const index = parseInt(slider.value);
+            if (index < allSimulationFrames.length) {
+                isReplaying = (index < allSimulationFrames.length - 1);
+                renderFrame(index);
+            }
+        };
+
+        // 实现 Resizer 拖拽逻辑
+        const resizer = document.getElementById('resizer');
+        const topSection = document.getElementById('top-section');
+        let isResizing = false;
+
+        resizer.onmousedown = (e) => {
+            isResizing = true;
+            document.body.style.cursor = 'ns-resize';
+        };
+
+        document.onmousemove = (e) => {
+            if (!isResizing) return;
+            const mainWrapper = document.getElementById('main-wrapper');
+            const mainRect = mainWrapper.getBoundingClientRect();
+            
+            // 计算新的顶部高度
+            let newTopHeight = e.clientY - mainRect.top;
+            
+            // 限制高度范围
+            const minHeight = 350; // 至少显示仪表盘
+            const maxHeight = mainRect.height - 100; // 留出反应框空间
+            
+            newTopHeight = Math.max(minHeight, Math.min(newTopHeight, maxHeight));
+            topSection.style.height = `${newTopHeight}px`;
+            
+            // 重新调整仪表盘大小
+            Plotly.Plots.resize('dashboard-container');
+            updateLines();
+        };
+
+        document.onmouseup = () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = 'default';
+            }
+        };
+
+        document.getElementById('viz-root').onscroll = updateLines;
+        window.onresize = () => {
+            updateLines();
+            Plotly.Plots.resize('dashboard-container');
+        };
+
+        // 初始化连线显示开关
+        const toggleFluxLines = document.getElementById('toggle-flux-lines');
+        toggleFluxLines.checked = showFluxLines;
+        toggleFluxLines.onchange = () => {
+            showFluxLines = toggleFluxLines.checked;
+            updateLines();
+        };
     };
+
+    function renderFrame(index) {
+        const data = allSimulationFrames[index];
+        if (!data) return;
+
+        document.getElementById('timer').innerText = `时间: ${data.minute} min`;
+        document.getElementById('progress-slider').value = index;
+
+        // 1. 更新仪表盘曲线：从 dashboardHistory 中切片
+        const xData = [];
+        const yData = [];
+        
+        const historyTimes = dashboardHistory.time.slice(0, index + 1);
+        
+        dashboardMetabolites.forEach(m => {
+            xData.push(historyTimes);
+            yData.push(dashboardHistory.data[m] ? dashboardHistory.data[m].slice(0, index + 1) : []);
+        });
+        dashboardRates.forEach(r => {
+            xData.push(historyTimes);
+            yData.push(dashboardHistory.data[r] ? dashboardHistory.data[r].slice(0, index + 1) : []);
+        });
+
+        const gd = document.getElementById('dashboard-container');
+        if (gd && gd.data && gd.data.length === xData.length) {
+            Plotly.update('dashboard-container', { x: xData, y: yData });
+        }
+
+        // 2. 更新反应卡片
+        Object.entries(data.rates).forEach(([key, val]) => {
+            const el = document.getElementById(`rate-${key}`);
+            const card = document.getElementById(`card-${key}`);
+            if (el && card) {
+                el.innerText = val.toFixed(4);
+                if (Math.abs(val) < 0.00001) { 
+                    card.style.backgroundColor = `var(--card)`;
+                    card.style.borderColor = `#444`;
+                } else {
+                    const clamped = Math.max(-0.1, Math.min(0.1, val));
+                    const intensity = Math.abs(clamped) / 0.1;
+                    if (val > 0) {
+                        card.style.backgroundColor = `rgba(77, 171, 247, ${intensity * 0.3})`;
+                        card.style.borderColor = `rgba(77, 171, 247, ${0.3 + intensity * 0.4})`;
+                    } else {
+                        card.style.backgroundColor = `rgba(255, 62, 62, ${intensity * 0.3})`;
+                        card.style.borderColor = `rgba(255, 62, 62, ${0.3 + intensity * 0.4})`;
+                    }
+                }
+            }
+        });
+        
+        // 3. 更新物质卡片
+        Object.entries(data.metabolites).forEach(([m, val]) => {
+            const el = document.getElementById(`val-${m}`);
+            const box = document.getElementById(`meta-${m}`);
+            if (el && box) {
+                el.innerText = val.toFixed(2);
+                const constraint = config.constraints[m];
+                if (constraint) {
+                    const {min, max} = constraint;
+                    if (val < min || val > max) box.classList.add('warning');
+                    else box.classList.remove('warning');
+                    const rangePercent = Math.max(0, Math.min(1, (val - min) / (max - min)));
+                    box.style.backgroundColor = `rgba(252, 196, 25, ${rangePercent * 0.4})`;
+                }
+            }
+        });
+
+        // 4. 更新连线
+        updateLines();
+    }
+
+    function initSearch() {
+        const input = document.getElementById('meta-search-input');
+        const results = document.getElementById('meta-search-results');
+
+        input.oninput = () => {
+            const val = input.value.toLowerCase();
+            if (!val) {
+                results.style.display = 'none';
+                return;
+            }
+            const filtered = allMetaboliteKeys.filter(m => m.toLowerCase().includes(val));
+            results.innerHTML = filtered.map(m => `<div class="search-result-item">${m}</div>`).join('');
+            results.style.display = 'block';
+
+            document.querySelectorAll('.search-result-item').forEach(item => {
+                item.onclick = () => {
+                    addActiveMetabolite(item.innerText);
+                    input.value = '';
+                    results.style.display = 'none';
+                };
+            });
+        };
+
+        document.onclick = (e) => {
+            if (e.target !== input) results.style.display = 'none';
+        };
+    }
+
+    function addActiveMetabolite(m) {
+        if (activeMetabolites.has(m)) return;
+        activeMetabolites.add(m);
+        renderActiveMetabolites();
+    }
+
+    function removeActiveMetabolite(m) {
+        activeMetabolites.delete(m);
+        if (selectedMetabolite === m) selectedMetabolite = null;
+        renderActiveMetabolites();
+        updateLines();
+    }
+
+    function renderActiveMetabolites() {
+        const list = document.getElementById('meta-list');
+        list.innerHTML = '';
+        activeMetabolites.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'meta-item'; 
+            if (selectedMetabolite === m) div.classList.add('active');
+            div.id = `meta-${m}`;
+            div.innerHTML = `
+                <span class="remove-meta" onclick="event.stopPropagation(); removeActiveMetabolite('${m}')">✕</span>
+                <div class="meta-name">${m.toUpperCase()}</div>
+                <div class="meta-val" id="val-${m}">0.00</div>`;
+            
+            div.onclick = () => {
+                document.querySelectorAll('.meta-item').forEach(el => el.classList.remove('active'));
+                
+                if (selectedMetabolite === m) {
+                    selectedMetabolite = null;
+                    toggleHighlight(null); // 取消高亮
+                } else {
+                    selectedMetabolite = m;
+                    div.classList.add('active');
+                    toggleHighlight(m); // 设置高亮
+                }
+                updateLines();
+                performTraceAnalysis();
+            };
+
+            div.ondblclick = () => {
+                if (dashboardMetabolites.has(m)) {
+                    dashboardMetabolites.delete(m);
+                } else {
+                    dashboardMetabolites.add(m);
+                }
+                initDashboard();
+            };
+
+            list.appendChild(div);
+        });
+    }
+
+    function toggleHighlight(metaboliteName) {
+        const gd = document.getElementById('dashboard-container');
+        if (!gd.data) return;
+
+        // 恢复之前高亮的曲线
+        if (highlightedTrace.index !== -1) {
+            Plotly.restyle(gd, { 'line.width': highlightedTrace.originalWidth }, highlightedTrace.index);
+            highlightedTrace.index = -1;
+        }
+
+        if (metaboliteName) {
+            const traceIndex = gd.data.findIndex(trace => trace.name === metaboliteName.toUpperCase());
+            if (traceIndex !== -1) {
+                highlightedTrace.index = traceIndex;
+                highlightedTrace.originalWidth = gd.data[traceIndex].line.width;
+                Plotly.restyle(gd, { 'line.width': highlightedTrace.originalWidth * 2.5 }, traceIndex);
+            }
+        }
+    }
+
+    function handleTimeMarker(time) {
+        if (timeMarkers.length >= 2) {
+            timeMarkers.shift(); // 移除最老的时间点
+        }
+        timeMarkers.push(time);
+        updateAnalysisPeriod();
+    }
+
+    function updateAnalysisPeriod() {
+        const gd = document.getElementById('dashboard-container');
+        const newLayout = {
+            shapes: [],
+        };
+
+        if (timeMarkers.length > 0) {
+            timeMarkers.forEach(t => {
+                newLayout.shapes.push({
+                    type: 'line',
+                    x0: t, x1: t, y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#cccccc', width: 1, dash: 'dash' }
+                });
+            });
+        }
+
+        if (timeMarkers.length === 2) {
+            newLayout.shapes.push({
+                type: 'rect',
+                x0: Math.min(...timeMarkers), x1: Math.max(...timeMarkers),
+                y0: 0, y1: 1, yref: 'paper',
+                fillcolor: 'rgba(255, 255, 255, 0.05)',
+                layer: 'below',
+                line: { width: 0 }
+            });
+            performTraceAnalysis();
+        }
+
+        Plotly.relayout(gd, newLayout);
+    }
+
+    function performTraceAnalysis() {
+        if (!selectedMetabolite || timeMarkers.length !== 2) {
+            document.getElementById('analysis-container').style.display = 'none';
+            return;
+        }
+
+        const t_start = Math.min(...timeMarkers);
+        const t_end = Math.max(...timeMarkers);
+        
+        // 筛选时间范围内的记录
+        const range_frames = allSimulationFrames.filter(f => f.minute >= t_start && f.minute <= t_end);
+        if (range_frames.length < 2) return;
+
+        const val_start = range_frames[0].metabolites[selectedMetabolite] || 0;
+        const val_end = range_frames[range_frames.length - 1].metabolites[selectedMetabolite] || 0;
+        const total_delta = val_end - val_start;
+
+        // 累计反应贡献
+        const cumulative_impacts = {};
+        range_frames.forEach(frame => {
+            const audit = frame.audit || {};
+            Object.entries(audit).forEach(([rxn_name, outputs]) => {
+                if (outputs[selectedMetabolite] !== undefined) {
+                    cumulative_impacts[rxn_name] = (cumulative_impacts[rxn_name] || 0) + outputs[selectedMetabolite];
+                }
+            });
+        });
+
+        // 排序贡献
+        const sorted_impacts = Object.entries(cumulative_impacts)
+            .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+            .slice(0, 8);
+
+        // 更新 UI
+        const container = document.getElementById('analysis-container');
+        container.style.display = 'block';
+        document.getElementById('analysis-target').innerText = selectedMetabolite.toUpperCase();
+        document.getElementById('analysis-range').innerText = `${t_start.toFixed(1)} - ${t_end.toFixed(1)} min`;
+
+        let html = `<div style="margin-bottom: 8px;">总变化量: <b style="color: ${total_delta >= 0 ? '#51cf66' : '#ff6b6b'}">${total_delta.toFixed(4)}</b> mmol/L</div>`;
+        html += `<div style="display: grid; grid-template-columns: 1fr auto; gap: 5px 15px;">`;
+        
+        sorted_impacts.forEach(([name, val]) => {
+            const rxn_config = config.reactions[name] || { display_name: name };
+            const color = val >= 0 ? '#51cf66' : '#ff6b6b';
+            const contribution_percent = total_delta !== 0 ? (val / total_delta * 100).toFixed(1) : '0';
+            html += `<span style="color: #888;">${rxn_config.display_name}</span>
+                     <span style="color: ${color}; font-family: monospace; text-align: right;">
+                        ${val > 0 ? '+' : ''}${val.toFixed(4)} 
+                        <span style="font-size: 0.8em; color: #666; margin-left: 5px;">(${contribution_percent}%)</span>
+                     </span>`;
+        });
+        html += `</div>`;
+        
+        document.getElementById('analysis-content').innerHTML = html;
+    }
+
+    function clearAnalysis() {
+        timeMarkers = [];
+        document.getElementById('analysis-container').style.display = 'none';
+        updateAnalysisPeriod();
+    }
 
     function addEvent() {
         const options = allMetaboliteKeys.map(m => `<option value="${m}">${m}</option>`).join('');
@@ -141,6 +700,15 @@
                 e.stopPropagation();
                 card.classList.toggle('expanded'); 
                 setTimeout(updateLines, 50); 
+            };
+            card.ondblclick = (e) => {
+                e.stopPropagation();
+                if (dashboardRates.has(r.rate_key)) {
+                    dashboardRates.delete(r.rate_key);
+                } else {
+                    dashboardRates.add(r.rate_key);
+                }
+                initDashboard();
             };
 
             // 区分输入输出 Badge
@@ -204,74 +772,38 @@
     }
 
     function initMetabolites() {
-        const list = document.getElementById('meta-list');
-        allMetaboliteKeys.forEach(m => {
-            const div = document.createElement('div');
-            div.className = 'meta-item'; div.id = `meta-${m}`;
-            div.innerHTML = `<div class="meta-name">${m.toUpperCase()}</div><div class="meta-val" id="val-${m}">0.00</div>`;
-            div.onclick = () => {
-                document.querySelectorAll('.meta-item').forEach(el => el.classList.remove('active'));
-                selectedMetabolite = (selectedMetabolite === m) ? null : m;
-                if(selectedMetabolite) div.classList.add('active');
-                updateLines();
-            };
-            list.appendChild(div);
-        });
+        renderActiveMetabolites();
     }
 
     socket.on('rate_update', (data) => {
-        document.getElementById('timer').innerText = `时间: ${data.minute} min`;
+        // 存储当前帧数据
+        allSimulationFrames.push(data);
         
-        Object.entries(data.rates).forEach(([key, val]) => {
-            const el = document.getElementById(`rate-${key}`);
-            const card = document.getElementById(`card-${key}`);
-            if (el && card) {
-                el.innerText = val.toFixed(4);
-                
-                // 增加对 0 的精确判断
-                if (Math.abs(val) < 0.00001) { 
-                    // 速率为 0：恢复默认深色背景，边框变淡
-                    card.style.backgroundColor = `var(--card)`;
-                    card.style.borderColor = `#444`;
-                } else {
-                    const clamped = Math.max(-0.1, Math.min(0.1, val));
-                    const intensity = Math.abs(clamped) / 0.1;
-                    
-                    if (val > 0) {
-                        // 正值：蓝色
-                        card.style.backgroundColor = `rgba(77, 171, 247, ${intensity * 0.3})`;
-                        card.style.borderColor = `rgba(77, 171, 247, ${0.3 + intensity * 0.4})`;
-                    } else {
-                        // 负值：红色
-                        card.style.backgroundColor = `rgba(255, 62, 62, ${intensity * 0.3})`;
-                        card.style.borderColor = `rgba(255, 62, 62, ${0.3 + intensity * 0.4})`;
-                    }
-                }
-            }
-        });
-        
+        // 更新历史数据（用于 Plotly）
+        dashboardHistory.time.push(data.minute);
         Object.entries(data.metabolites).forEach(([m, val]) => {
-            const el = document.getElementById(`val-${m}`);
-            const box = document.getElementById(`meta-${m}`);
-            if (el && box) {
-                el.innerText = val.toFixed(2);
-                const constraint = config.constraints[m];
-                if (constraint) {
-                    const {min, max} = constraint;
-                    if (val < min || val > max) box.classList.add('warning');
-                    else box.classList.remove('warning');
-                    const rangePercent = Math.max(0, Math.min(1, (val - min) / (max - min)));
-                    box.style.backgroundColor = `rgba(252, 196, 25, ${rangePercent * 0.4})`;
-                }
-            }
+            if (!dashboardHistory.data[m]) dashboardHistory.data[m] = [];
+            dashboardHistory.data[m].push(val);
         });
-        if (selectedMetabolite) updateLines();
+        Object.entries(data.rates).forEach(([r, val]) => {
+            if (!dashboardHistory.data[r]) dashboardHistory.data[r] = [];
+            dashboardHistory.data[r].push(val);
+        });
+
+        // 更新进度条最大值
+        const slider = document.getElementById('progress-slider');
+        slider.max = allSimulationFrames.length - 1;
+
+        // 如果不是在重放模式，则更新 UI 到最新帧
+        if (!isReplaying) {
+            renderFrame(allSimulationFrames.length - 1);
+        }
     });
 
     function updateLines() {
         const svg = document.getElementById('svg-overlay');
         svg.innerHTML = '';
-        if (!selectedMetabolite) return;
+        if (!selectedMetabolite || !showFluxLines) return;
         const metaEl = document.getElementById(`meta-${selectedMetabolite}`);
         if(!metaEl) return;
         const mRect = metaEl.getBoundingClientRect();
@@ -326,6 +858,19 @@
     }
 
     function startSimulation() {
+        // 清空历史记录
+        dashboardHistory = {
+            time: [], data: {}
+        };
+        allSimulationFrames = [];
+        isReplaying = false;
+        timeMarkers = [];
+        document.getElementById('progress-slider').max = 0;
+        document.getElementById('progress-slider').value = 0;
+        document.getElementById('analysis-container').style.display = 'none';
+        
+        initDashboard();
+
         const events = Array.from(document.querySelectorAll('.event-box')).map(el => ({
             time: el.querySelector('.ev-time').value,
             substance: el.querySelector('.ev-sub').value,
