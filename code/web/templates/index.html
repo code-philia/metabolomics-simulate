@@ -18,7 +18,29 @@
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; margin: 0; height: 100vh; overflow: hidden; }
         
         /* 左侧面板 */
-        #sidebar { width: 280px; padding: 20px; background: var(--sidebar-bg); border-right: 1px solid var(--border); overflow-y: auto; z-index: 10; }
+        #sidebar { 
+            width: 280px; 
+            background: var(--sidebar-bg); 
+            border-right: 1px solid var(--border); 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh;
+            overflow: hidden; 
+            z-index: 10; 
+        }
+        #sidebar-top {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        #sidebar-bottom {
+            flex-shrink: 0;
+            padding: 20px;
+            border-top: 1px solid var(--border);
+            background: var(--sidebar-bg);
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+        }
+
         .event-box { background: var(--card); border: 1px solid var(--border); padding: 10px; margin-bottom: 10px; border-radius: 6px; position: relative; display: flex; flex-wrap: wrap; gap: 5px; }
         .event-box label { font-size: 11px; color: var(--text-dim); display: block; }
         .event-box input, .event-box select { width: 100%; background: var(--input-bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 3px; }
@@ -91,6 +113,16 @@
         .param-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .param-item label { width: 100px; color: var(--text-dim); }
         .param-item input { background: var(--input-bg); border: 1px solid var(--border); color: var(--text); padding: 2px 5px; border-radius: 3px; width: 60px; }
+
+        .rxn-weight-container { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px; }
+        .rxn-weight-item { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px; }
+        .rxn-weight-item span { flex: 1; font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .rxn-weight-item input { width: 50px; background: var(--input-bg); border: 1px solid var(--border); color: var(--text); padding: 1px 4px; border-radius: 3px; }
+        .rxn-search-box { position: relative; margin-bottom: 10px; }
+        .rxn-search-input { width: 100%; background: var(--input-bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 5px; font-size: 0.9em; box-sizing: border-box; }
+        .rxn-search-results { position: absolute; top: 100%; left: 0; right: 0; background: var(--card); border: 1px solid var(--border); max-height: 150px; overflow-y: auto; z-index: 100; display: none; }
+        .rxn-search-item { padding: 5px 10px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 0.85em; }
+        .rxn-search-item:hover { background: var(--header-bg); }
 
         .dashboard-container { 
             width: 100%; 
@@ -252,37 +284,57 @@
 <body>
 
 <div id="sidebar">
-    <h3>模拟配置</h3>
-    <label>总时长 (min)</label>
-    <input type="number" id="total_duration" value="120">
-    <button onclick="addGroup()" style="background: #4dabf7; margin-top: 10px; color: white;">+ 新建模拟对比组</button>
-    <h3 style="margin-top:20px;">事件调度</h3>
-    <div id="event-list"></div>
-    <button id="add-event-btn" onclick="addEvent()">+ 添加注入事件</button>
-    <button onclick="startSimulation()" style="background: #40c057; margin-top: 20px; color: white;">▶ 开始模拟</button>
-    <div id="timer" style="margin-top:20px; text-align:center; color: var(--accent); font-size: 1.2em;">时间: 0 min</div>
-    
-    <div id="replay-control" style="margin-top:20px;">
-        <label style="font-size:0.8em; color:#888;">模拟重放进度</label>
-        <input type="range" id="progress-slider" min="0" max="0" value="0" style="width:100%; margin-top:5px;">
+    <div id="sidebar-top">
+        <h3>模拟配置</h3>
+        <label>总时长 (min)</label>
+        <input type="number" id="total_duration" value="120">
+        <button onclick="addGroup()" style="background: #4dabf7; margin-top: 10px; color: white;">+ 新建模拟对比组</button>
+        
+        <h3 style="margin-top:20px;">快捷事件</h3>
+        <div class="setting-item">
+            <label for="toggle-meals">一日三餐</label>
+            <label class="switch">
+                <input type="checkbox" id="toggle-meals" onchange="handleMealToggle(this.checked)">
+                <span class="slider round"></span>
+            </label>
+        </div>
+
+        <h3 style="margin-top:20px;">事件调度</h3>
+        <div id="event-list"></div>
+        <button id="add-event-btn" onclick="addEvent()">+ 添加注入事件</button>
     </div>
 
-    <h3 style="margin-top:20px;">显示设置</h3>
-    <div class="setting-item">
-        <label for="toggle-flux-lines">显示物质连线</label>
-        <label class="switch">
-            <input type="checkbox" id="toggle-flux-lines" checked>
-            <span class="slider round"></span>
-        </label>
+    <div id="sidebar-bottom">
+        <div style="display: flex; gap: 10px;">
+            <button id="start-btn" onclick="startSimulation()" style="background: #40c057; flex: 2; color: white;">▶ 开始模拟</button>
+            <button id="pause-btn" onclick="togglePause()" style="background: #fcc419; flex: 1; color: white; display: none;">⏸ 暂停</button>
+            <button id="reset-btn" onclick="resetSimulation()" style="background: #ff6b6b; flex: 1; color: white;">↺ 重置</button>
+        </div>
+        
+        <div id="timer" style="margin-top:15px; text-align:center; color: var(--accent); font-size: 1.1em; font-weight: bold;">时间: 0 min</div>
+        
+        <div id="replay-control" style="margin-top:15px;">
+            <label style="font-size:0.8em; color: var(--text-dim);">模拟重放进度</label>
+            <input type="range" id="progress-slider" min="0" max="0" value="0" style="width:100%; margin-top:5px;">
+        </div>
+
+        <h3 style="margin-top:15px; font-size: 1em;">显示设置</h3>
+        <div class="setting-item">
+            <label for="toggle-flux-lines">显示物质连线</label>
+            <label class="switch">
+                <input type="checkbox" id="toggle-flux-lines" checked>
+                <span class="slider round"></span>
+            </label>
+        </div>
+        <div class="setting-item">
+            <label for="toggle-theme">明亮模式</label>
+            <label class="switch">
+                <input type="checkbox" id="toggle-theme">
+                <span class="slider round"></span>
+            </label>
+        </div>
+        <button onclick="clearAnalysis()" style="background: #868e96; margin-top: 5px; padding: 5px; font-size: 0.85em;">清空分析标记</button>
     </div>
-    <div class="setting-item">
-        <label for="toggle-theme">明亮模式</label>
-        <label class="switch">
-            <input type="checkbox" id="toggle-theme">
-            <span class="slider round"></span>
-        </label>
-    </div>
-    <button onclick="clearAnalysis()" style="background: #868e96; margin-top: 10px;">清空分析标记</button>
 </div>
 
 <div id="main-wrapper">
@@ -339,6 +391,7 @@
                     </div>
                 </div>
                 <div class="param-settings" id="params-${gid}" onclick="event.stopPropagation()">
+                    <div style="font-weight: bold; margin-bottom: 10px; font-size: 0.9em; color: var(--accent);">环境生理参数</div>
                     <div class="param-item">
                         <label>肝功能系数</label>
                         <input type="number" step="0.1" class="param-liver-func" value="1.0">
@@ -346,6 +399,16 @@
                     <div class="param-item">
                         <label>胰岛素降解</label>
                         <input type="number" step="0.1" class="param-insulin-deg" value="1.0">
+                    </div>
+                    
+                    <div style="font-weight: bold; margin: 15px 0 5px 0; font-size: 0.9em; color: var(--accent);">反应激活权重</div>
+                    <div class="rxn-search-box">
+                        <input type="text" class="rxn-search-input" placeholder="搜索反应并设置权重..." 
+                               oninput="handleRxnSearch('${gid}', this.value)">
+                        <div class="rxn-search-results" id="rxn-results-${gid}"></div>
+                    </div>
+                    <div class="rxn-weight-container" id="rxn-weights-${gid}">
+                        <!-- 反应权重条目将在此添加 -->
                     </div>
                 </div>
                 <div class="dashboard-container" id="dashboard-${gid}"></div>
@@ -423,6 +486,49 @@
     function toggleParams(gid) {
         const el = document.getElementById(`params-${gid}`);
         if (el) el.classList.toggle('active');
+    }
+
+    function handleRxnSearch(gid, query) {
+        const resultsEl = document.getElementById(`rxn-results-${gid}`);
+        if (!query) {
+            resultsEl.style.display = 'none';
+            return;
+        }
+        
+        const q = query.toLowerCase();
+        const matches = Object.entries(config.reactions).filter(([id, r]) => {
+            return id.toLowerCase().includes(q) || r.display_name.toLowerCase().includes(q);
+        });
+
+        if (matches.length > 0) {
+            resultsEl.innerHTML = matches.map(([id, r]) => `
+                <div class="rxn-search-item" onclick="addRxnWeight('${gid}', '${id}', '${r.display_name}')">
+                    ${r.display_name} <small style="color:#666">(${id})</small>
+                </div>
+            `).join('');
+            resultsEl.style.display = 'block';
+        } else {
+            resultsEl.style.display = 'none';
+        }
+    }
+
+    function addRxnWeight(gid, rxnId, rxnName) {
+        const container = document.getElementById(`rxn-weights-${gid}`);
+        const resultsEl = document.getElementById(`rxn-results-${gid}`);
+        resultsEl.style.display = 'none';
+        
+        // 防止重复添加
+        if (container.querySelector(`[data-rxn-id="${rxnId}"]`)) return;
+
+        const row = document.createElement('div');
+        row.className = 'rxn-weight-item';
+        row.dataset.rxnId = rxnId;
+        row.innerHTML = `
+            <span title="${rxnName}">${rxnName}</span>
+            <input type="number" step="0.1" value="1.0" class="rxn-weight-input">
+            <small class="close-group" style="margin-left:5px" onclick="this.parentElement.remove()">✕</small>
+        `;
+        container.appendChild(row);
     }
 
     function removeGroup(gid) {
@@ -939,15 +1045,33 @@
         updateAnalysisPeriod();
     }
 
-    function addEvent() {
-        const options = allMetaboliteKeys.map(m => `<option value="${m}">${m}</option>`).join('');
+    function addEvent(time = 10, substance = 'glucose', amount = 5, isMeal = false) {
+        const options = allMetaboliteKeys.map(m => `<option value="${m}" ${m === substance ? 'selected' : ''}>${m}</option>`).join('');
         const div = document.createElement('div');
         div.className = 'event-box';
+        if (isMeal) div.classList.add('meal-event');
+
         div.innerHTML = `<span class="remove-btn" onclick="this.parentElement.remove()">✕</span>
-            <div style="flex:1"><label>时刻</label><input type="number" class="ev-time" value="10"></div>
+            <div style="flex:1"><label>时刻</label><input type="number" class="ev-time" value="${time}"></div>
             <div style="flex:2"><label>物质</label><select class="ev-sub">${options}</select></div>
-            <div style="flex:1"><label>剂量</label><input type="number" class="ev-amt" value="5"></div>`;
+            <div style="flex:1"><label>剂量</label><input type="number" class="ev-amt" value="${amount}"></div>`;
         document.getElementById('event-list').appendChild(div);
+    }
+
+    function handleMealToggle(isChecked) {
+        // 先移除所有旧的餐饮事件
+        document.querySelectorAll('.meal-event').forEach(el => el.remove());
+
+        if (isChecked) {
+            const mealTimes = [420, 720, 1080]; // 7:00, 12:00, 18:00
+            const nutrients = ['glucose', 'fatty_acid', 'amino_acid'];
+            
+            mealTimes.forEach(time => {
+                nutrients.forEach(substance => {
+                    addEvent(time, substance, 5, true);
+                });
+            });
+        }
     }
 
     function buildNode(id) {
@@ -1058,6 +1182,12 @@
         }
     });
 
+    socket.on('simulation_finished', () => {
+        document.getElementById('start-btn').style.display = 'block';
+        document.getElementById('pause-btn').style.display = 'none';
+        isPaused = false;
+    });
+
     function updateLines() {
         const svg = document.getElementById('svg-overlay');
         svg.innerHTML = '';
@@ -1104,6 +1234,45 @@
         });
     }
 
+    let isPaused = false;
+
+    function togglePause() {
+        isPaused = !isPaused;
+        const btn = document.getElementById('pause-btn');
+        btn.innerText = isPaused ? '▶ 继续' : '⏸ 暂停';
+        btn.style.background = isPaused ? '#40c057' : '#fcc419';
+        socket.emit('pause_simulation', { paused: isPaused });
+    }
+
+    function resetSimulation() {
+        socket.emit('stop_simulation');
+        
+        isPaused = false;
+        isReplaying = false;
+        timeMarkers = [];
+        
+        const pauseBtn = document.getElementById('pause-btn');
+        pauseBtn.style.display = 'none';
+        pauseBtn.innerText = '⏸ 暂停';
+        pauseBtn.style.background = '#fcc419';
+        
+        document.getElementById('start-btn').style.display = 'block';
+        document.getElementById('timer').innerText = '时间: 0 min';
+        document.getElementById('progress-slider').max = 0;
+        document.getElementById('progress-slider').value = 0;
+
+        groupIds.forEach(gid => {
+            groups[gid].history = { time: [], data: {} };
+            groups[gid].frames = [];
+            initDashboard(gid);
+            const analysisContainer = document.querySelector(`#group-${gid} .analysis-container`);
+            if (analysisContainer) analysisContainer.style.display = 'none';
+        });
+
+        renderFrame(0);
+        updateAnalysisPeriod();
+    }
+
     function startSimulation() {
         const groupParams = {};
         groupIds.forEach(gid => {
@@ -1116,17 +1285,31 @@
             // 收集参数
             const liverFunc = document.querySelector(`#params-${gid} .param-liver-func`).value;
             const insulinDeg = document.querySelector(`#params-${gid} .param-insulin-deg`).value;
+            
+            const rxnWeights = {};
+            document.querySelectorAll(`#rxn-weights-${gid} .rxn-weight-item`).forEach(row => {
+                rxnWeights[row.dataset.rxnId] = row.querySelector('.rxn-weight-input').value;
+            });
+
             groupParams[gid] = {
                 "liver_function": liverFunc,
-                "insulin_degrading_enzyme_activity": insulinDeg
+                "insulin_degrading_enzyme_activity": insulinDeg,
+                "reaction_weights": rxnWeights
             };
         });
 
         isReplaying = false;
+        isPaused = false;
         timeMarkers = [];
         document.getElementById('progress-slider').max = 0;
         document.getElementById('progress-slider').value = 0;
         
+        document.getElementById('start-btn').style.display = 'none';
+        const pauseBtn = document.getElementById('pause-btn');
+        pauseBtn.style.display = 'block';
+        pauseBtn.innerText = '⏸ 暂停';
+        pauseBtn.style.background = '#fcc419';
+
         const events = Array.from(document.querySelectorAll('.event-box')).map(el => ({
             time: el.querySelector('.ev-time').value,
             substance: el.querySelector('.ev-sub').value,

@@ -90,8 +90,15 @@ class MetabolicEnvironment:
             "insulin_sensitivity": 1.0,
             "aldh_activity": 1.0
         }
+        self.reaction_weights = {} # 新增：存储叶子反应的权重
         self.history = []
         self.current_rates = {}
+
+    def getReactionWeight(self, name: str) -> float:
+        return float(self.reaction_weights.get(name, 1.0))
+
+    def setReactionWeight(self, name: str, value: float) -> None:
+        self.reaction_weights[name] = float(max(value, 0.0))
 
     # def update_history(self, t):
     #     rate_fields = {f"rate_{k}": float(v) for k, v in self.current_rates.items()}
@@ -167,6 +174,7 @@ class ResourcePool:
         self.snapshot_metabolites = dict(env.metabolites)
         self.snapshot_signals = dict(env.signals)
         self.snapshot_parameters = dict(env.parameters)
+        self.snapshot_reaction_weights = dict(env.reaction_weights) # 新增：快照存储反应权重
         self.outputs: Dict[str, float] = {}
         self.signal_updates: Dict[str, float] = {}
         self.rates: Dict[str, float] = {}
@@ -208,6 +216,7 @@ class ResourceEnv(MetabolicEnvironment):
         self.metabolites = pool.snapshot_metabolites
         self.signals = pool.snapshot_signals
         self.parameters = pool.snapshot_parameters
+        self.reaction_weights = pool.snapshot_reaction_weights # 新增：使用快照中的反应权重
         self.history = []
 
     def update_history(self, t):
@@ -230,7 +239,10 @@ def oxygen_supply(ctx: Ctx) -> Dict[str, float]:
     target_o2 = 5.0  # 假设正常肝脏氧浓度水平
     # 模拟从血液扩散，浓度越低补充越快
     supply_rate = 0.5 * (target_o2 - current_o2) 
-    return {"oxygen": supply_rate}
+    weight = ctx.env.getReactionWeight("oxygen_supply")
+    actual_rate = supply_rate * weight
+    ctx.env.recordRate("oxygen_supply", actual_rate)
+    return {"oxygen": actual_rate}
 
 def pgm_G6P_to_G1P(ctx: Ctx) -> Dict[str, float]:
     g6p = ctx.env.getMetabolite("g6p")
@@ -340,7 +352,8 @@ def g6pase_G6P_to_Glucose(ctx: Ctx) -> Dict[str, float]:
     gate_open = 1.0 / (1.0 + np.exp(10.0 * (ins + 0.2)))
     v_max = 1.0 
     km = 0.5
-    rate = v_max * (g6p / (g6p + km)) * gate_open
+    weight = ctx.env.getReactionWeight("g6pase_G6P_to_Glucose")
+    rate = v_max * (g6p / (g6p + km)) * gate_open * weight
     outputs = {"g6p": -rate, "glucose": rate}
     ctx.write(outputs)
     ctx.env.recordRate("g6pase_G6P_to_Glucose", rate)
@@ -355,7 +368,8 @@ def hexokinase_step(ctx: Ctx) -> Dict[str, float]:
     km_glucose = 5.0 
     # 速率受血糖和胰岛素共同驱动
     rate = v_max * (glucose / (glucose + km_glucose)) * (0.2 + 0.8 * insulin)
-    actual_rate = min(rate, glucose * 0.1, atp * 0.5)
+    weight = ctx.env.getReactionWeight("hexokinase")
+    actual_rate = min(rate, glucose * 0.1, atp * 0.5) * weight
     ctx.env.recordRate("hexokinase", actual_rate)
     return {"glucose": -actual_rate, "g6p": actual_rate, "atp": -actual_rate, "adp": actual_rate}
 
@@ -370,7 +384,8 @@ def pfk1_step(ctx: Ctx) -> Dict[str, float]:
     energy_inhibition = 1.0 / (1.0 + max(0, atp - 3.0) * 2.0)
     v_max = 0.2
     km_g6p = 0.2  # 低 Km 确保 G6P 能被有效向下游拉动
-    rate = v_max * (g6p / (g6p + km_g6p)) * energy_inhibition * product_inhibition
+    weight = ctx.env.getReactionWeight("pfk1")
+    rate = v_max * (g6p / (g6p + km_g6p)) * energy_inhibition * product_inhibition * weight
     actual_rate = min(rate, g6p, atp * 0.5)
     ctx.env.recordRate("pfk1", actual_rate)
     # 此处产生一个虚拟的下游中间体 'f16bp' 或直接导向 'pep'
@@ -383,7 +398,8 @@ def pyruvate_kinase_step(ctx: Ctx) -> Dict[str, float]:
     # 1. 理论速率计算 - 进一步降低最大速率防止震荡
     v_max = 0.4  # 从0.5进一步降低到0.4
     # 引入 ADP 需求驱动，但使用更平缓的响应
-    potential_rate = v_max * (f16bp / (f16bp + 0.4)) * (adp / (adp + 0.4)) * (nad_plus / (nad_plus + 0.15))
+    weight = ctx.env.getReactionWeight("pyruvate_kinase")
+    potential_rate = v_max * (f16bp / (f16bp + 0.4)) * (adp / (adp + 0.4)) * (nad_plus / (nad_plus + 0.15)) * weight
     # 2. 核心平滑逻辑：单步消耗率限制，进一步降低抽取比例
     # 确保 actual_rate 不会超过 f16bp 的 12%，也不会超过 adp 存量的 25%
     safe_factor = min(1.0, (f16bp * 0.12) / (potential_rate + 1e-6), (adp * 0.25) / (potential_rate * 4.0 + 1e-6))
@@ -403,7 +419,8 @@ def pyruvate_destination_logic(ctx: Ctx) -> Dict[str, float]:
     oxygen = ctx.env.getMetabolite("oxygen")
     v_max = 0.5  # 从0.8降低到0.5
     # 基础速率 - 使用更平缓的米氏常数
-    potential_rate = v_max * (pyruvate / (pyruvate + 0.8))  # 从0.5增加到0.8
+    weight = ctx.env.getReactionWeight("lactate_production")
+    potential_rate = v_max * (pyruvate / (pyruvate + 0.8)) * weight  # 从0.5增加到0.8
     # 3. 核心平滑逻辑：降低抽取比例
     # 无论 v_max 多大，单步只消耗当前丙酮酸的 20% (从25%降低)
     actual_rate = potential_rate * min(1.0, (pyruvate * 0.2) / (potential_rate + 1e-6)) * 0.9  # 添加0.9阻尼因子
@@ -454,6 +471,9 @@ def fattyAcidSynthesis(ctx: Ctx) -> Dict[str, float]:
     # --- 新增：胆固醇合成 (Cholesterogenesis) ---
     # 模拟 HMG-CoA 还原酶途径，同样消耗 NADPH 和 ATP
     chol_rate = rate * 0.15 # 假设约15%的合成流量分流至胆固醇
+    weight = ctx.env.getReactionWeight("fattyAcidSynthesis")
+    rate = rate * weight
+    chol_rate = chol_rate * weight
     ctx.env.recordRate("fattyAcidSynthesis", rate)
     return {
         "acetyl_coa": -rate, 
@@ -477,7 +497,8 @@ def betaOxidation(ctx: Ctx) -> Dict[str, float]:
     oxidation_act = 1.0 / (1.0 + np.exp(-3.0 * (glucagon - insulin - 0.2)))
     fa_supply = max(0.0, min(1.0, (fa - 0.3) / 2.0))
     base = ctx.rate_modifier * alcohol_inhibition * (0.3 + 0.4 * max(glucagon, ep)) * min(fa, nad_plus)
-    rate = base * oxidation_act * max(0.3, fa_supply) * 1.2
+    weight = ctx.env.getReactionWeight("betaOxidation")
+    rate = base * oxidation_act * max(0.3, fa_supply) * 1.2 * weight
     if fa > 4.0:
         rate *= 2.0
     elif fa > 2.0:
@@ -497,7 +518,8 @@ def deNovoLipogenesis(ctx: Ctx) -> Dict[str, float]:
     lipogenesis_act = 1.0 / (1.0 + np.exp(-3.0 * (insulin - glucagon - 0.2)))
     synth_avail = 1.0 / (1.0 + np.exp(-3.0 * (1.0 - fa)))
     base = ctx.rate_modifier * (0.02 + 0.08 * insulin * ins_sens) * excess * min(glucose, atp * 0.5, nadph * 0.5)
-    rate = base * lipogenesis_act * synth_avail * 0.8
+    weight = ctx.env.getReactionWeight("deNovoLipogenesis")
+    rate = base * lipogenesis_act * synth_avail * 0.8 * weight
     ctx.env.recordRate("deNovoLipogenesis", rate)
     return {
         "glucose": -rate, 
@@ -516,7 +538,8 @@ def lipidTransport(ctx: Ctx) -> Dict[str, float]:
     tg = ctx.env.getMetabolite("triglycerides")
     lipogenesis_act = 1.0 / (1.0 + np.exp(-3.0 * (insulin - glucagon - 0.2)))
     base = ctx.rate_modifier * (0.01 + 0.05 * insulin * ins_sens) * min(fa, 5.0)
-    rate = base * lipogenesis_act * 0.6
+    weight = ctx.env.getReactionWeight("lipidTransport")
+    rate = base * lipogenesis_act * 0.6 * weight
     tg_clear = -ctx.rate_modifier * 1.5 if tg > 1.5 * 1.8 else 0.0
     ctx.env.recordRate("lipidTransport", rate)
     return {"fatty_acid": -rate * 0.7, "triglycerides": rate + tg_clear}
@@ -530,7 +553,8 @@ def adiposeLipolysis(ctx: Ctx) -> Dict[str, float]:
     drive = max(glucagon - insulin, 0.0) + ep * 1.0
     low_ins_boost = 0.5 if insulin < 0.2 else 0.0
     base = ctx.rate_modifier * (0.02 + 0.05 * (drive + low_ins_boost)) * 3.0
-    rate = base * oxidation_act * 0.7
+    weight = ctx.env.getReactionWeight("adiposeLipolysis")
+    rate = base * oxidation_act * 0.7 * weight
     ctx.env.recordRate("adiposeLipolysis", rate)
     fa_out = rate * 0.8
     if fa >= 1.5:
@@ -549,7 +573,8 @@ def protein_metabolism(ctx: Ctx) -> Dict[str, float]:
     synth_rate = 0.05 * ins * (aa / (aa + 5.0)) * (atp / (atp + 2.0)) * max(0, prot_limit)
     break_rate = 0.02 * glc * (prot / (prot + 5.0))
     # 正值：合成速率大于分解速率；负值：分解速率大于合成速率
-    net = synth_rate - break_rate
+    weight = ctx.env.getReactionWeight("protein_metabolism")
+    net = (synth_rate - break_rate) * weight
     ctx.env.recordRate("protein_metabolism", net)
     return {
         "protein_store": net,
@@ -572,7 +597,8 @@ def aa_catabolism_step(ctx: Ctx) -> Dict[str, float]:
     energy_safety_value = 1.0 / (1.0 + np.exp(-5.0 * (atp - 1.8)))
     drive = max(ctx.env.getSignal("glucagon") * energy_safety_value, 0.0)
     v_max = 0.1 # 适当下调 v_max，防止突发流量冲垮 ATP 池
-    rate = ctx.rate_modifier * v_max * drive * (aa / (aa + 10.0)) * (nad_plus / (nad_plus + 0.5)) * nh3_inhibition
+    weight = ctx.env.getReactionWeight("aa_catabolism_step")
+    rate = ctx.rate_modifier * v_max * drive * (aa / (aa + 10.0)) * (nad_plus / (nad_plus + 0.5)) * nh3_inhibition * weight
     # print(f'modifier: {ctx.rate_modifier:.4f}, nh3_inhibition: {nh3_inhibition:.4f}, drive: {drive:.4f}, aa: {(aa / (aa + 10.0)):.4f}, nad+: {(nad_plus / (nad_plus + 0.5)):.4f}, rate: {rate:.4f}\n')
     ctx.env.recordRate("aa_catabolism_step", rate)
     return {
@@ -621,14 +647,17 @@ def urea_cycle(ctx: Ctx) -> Dict[str, float]:
     # 防止负值
     rate = max(0.0, rate)
 
+    weight = ctx.env.getReactionWeight("urea_cycle")
+    final_rate = rate * weight
+
     # 5. 记录与返回
-    ctx.env.setMetabolite("mem_rate_ureaCycle", rate)
-    ctx.env.recordRate("urea_cycle", rate)
+    ctx.env.setMetabolite("mem_rate_ureaCycle", final_rate)
+    ctx.env.recordRate("urea_cycle", final_rate)
     return {
-        "ammonia": -rate,
-        "atp": -rate * 4.0,  # 消耗 4 个 ATP
-        "adp": rate * 4.0,
-        "urea": rate,
+        "ammonia": -final_rate,
+        "atp": -final_rate * 4.0,  # 消耗 4 个 ATP
+        "adp": final_rate * 4.0,
+        "urea": final_rate,
     }
 
 def glutamineShunt(ctx: Ctx) -> Dict[str, float]:
@@ -702,11 +731,13 @@ def metabolite_export(ctx: Ctx) -> Dict[str, float]:
     lactate = ctx.env.getMetabolite("lactate")
     lac_clearance = lactate * 0.05 
 
-    ctx.env.recordRate("metabolite_export", urea_clear + k_abs)
+    weight = ctx.env.getReactionWeight("metabolite_export")
+    final_rate = (urea_clear + k_abs) * weight
+    ctx.env.recordRate("metabolite_export", final_rate)
     return {
-        "urea": -urea_clear,
-        "amino_acid": aa_absorb,
-        "lactate": -lac_clearance,
+        "urea": -urea_clear * weight,
+        "amino_acid": aa_absorb * weight,
+        "lactate": -lac_clearance * weight,
     }
 
 def tca_cycle(ctx: Ctx) -> Dict[str, float]:
@@ -734,7 +765,11 @@ def tca_cycle(ctx: Ctx) -> Dict[str, float]:
     # 模拟酶促反应的物理惯性
     prev = ctx.env.getMetabolite("mem_rate_tca")
     alpha = 0.08  # 较小的 alpha 可以过滤掉高频震荡
-    smooth_rate = prev + alpha * (actual_rate - prev)
+    actual_smooth_rate = prev + alpha * (actual_rate - prev)
+    
+    weight = ctx.env.getReactionWeight("tca_cycle")
+    smooth_rate = actual_smooth_rate * weight
+    
     ctx.env.setMetabolite("mem_rate_tca", smooth_rate)
     
     ctx.env.recordRate("tca_cycle", smooth_rate)
@@ -763,7 +798,11 @@ def oxidativePhosphorylation(ctx: Ctx) -> Dict[str, float]:
     # 3. 速率平滑处理 (非常重要！)
     prev = ctx.env.getMetabolite("mem_rate_oxphos")
     alpha = 0.1  # 惯性系数
-    smooth_rate = prev + alpha * (actual_rate - prev)
+    actual_smooth_rate = prev + alpha * (actual_rate - prev)
+    
+    weight = ctx.env.getReactionWeight("oxidativePhosphorylation")
+    smooth_rate = actual_smooth_rate * weight
+    
     ctx.env.setMetabolite("mem_rate_oxphos", smooth_rate)
     
     ctx.env.recordRate("oxidativePhosphorylation", smooth_rate)
@@ -784,7 +823,8 @@ def ketogenesis(ctx: Ctx) -> Dict[str, float]:
     low_ins_gain = max(0.0, 1.0 - insulin)
     post = 1.0 if bool(ctx.env.getParameter("is_postprandial")) else 0.0
     post_clamp = 0.3 if post > 0.0 else 1.0
-    rate = ctx.rate_modifier * post_clamp * (0.1 + 0.15 * glucagon + 0.12 * low_ins_gain) * max(0.0, (70.0 - glucose) / 70.0) * min(acetyl, 5.0)
+    weight = ctx.env.getReactionWeight("ketogenesis")
+    rate = ctx.rate_modifier * post_clamp * (0.1 + 0.15 * glucagon + 0.12 * low_ins_gain) * max(0.0, (70.0 - glucose) / 70.0) * min(acetyl, 5.0) * weight
     rate = max(min(rate, 0.15), 0.02)
     ctx.env.recordRate("ketogenesis", rate)
     return {"acetyl_coa": -rate, "ketone_body": rate}
@@ -810,7 +850,8 @@ def lactateFermentation(ctx: Ctx) -> Dict[str, float]:
     v_max = 0.5 
     potential_rate = v_max * (pyr / (pyr + 0.5)) * (nadh / (nadh + 0.2)) * trig
     # 安全限制：单步不要消耗超过当前丙酮酸或 NADH 的 30%
-    actual_rate = potential_rate * min(1.0, (pyr * 0.3) / (potential_rate + 1e-6), (nadh * 0.3) / (potential_rate + 1e-6))
+    weight = ctx.env.getReactionWeight("lactateFermentation")
+    actual_rate = potential_rate * min(1.0, (pyr * 0.3) / (potential_rate + 1e-6), (nadh * 0.3) / (potential_rate + 1e-6)) * weight
     ctx.env.recordRate("lactateFermentation", actual_rate)
     # 确保 NADH:NAD+ 比例保持 1:1 回收
     return {
@@ -825,7 +866,8 @@ def nampt_Salvage(ctx: Ctx) -> Dict[str, float]:
     atp = ctx.env.getMetabolite("atp")
     liver_fn = ctx.env.getParameter("liver_function")
     # 降低速率以防止 NAD+ 堆积
-    rate = ctx.rate_modifier * min(nam, atp * 0.3) * 0.05 * liver_fn
+    weight = ctx.env.getReactionWeight("nampt_Salvage")
+    rate = ctx.rate_modifier * min(nam, atp * 0.3) * 0.05 * liver_fn * weight
     ctx.env.recordRate("nampt_Salvage", rate)
     return {"nicotinamide": -rate, "nad_plus": rate, "atp": -rate * 0.2, "adp": rate * 0.2}
 
@@ -836,7 +878,8 @@ def deNovoNADSynthesis(ctx: Ctx) -> Dict[str, float]:
     liver_fn = ctx.env.getParameter("liver_function")
     precursor = min(nia + trp * 0.5, atp * 0.3)
     # 降低速率以防止 NAD+ 堆积
-    rate = ctx.rate_modifier * precursor * 0.02 * liver_fn
+    weight = ctx.env.getReactionWeight("deNovoNADSynthesis")
+    rate = ctx.rate_modifier * precursor * 0.02 * liver_fn * weight
     ctx.env.recordRate("deNovoNADSynthesis", rate)
     return {"niacin": -rate * 0.5, "tryptophan": -rate, "nad_plus": rate, "atp": -rate * 0.2, "adp": rate * 0.2}
 
@@ -879,7 +922,8 @@ def phaseI_OxRed(ctx: Ctx) -> Dict[str, float]:
     xen = ctx.env.getParameter("xenobiotic_load")
     nadph = ctx.env.getMetabolite("nadph")
     liver_fn = ctx.env.getParameter("liver_function")
-    rate = ctx.rate_modifier * min(xen, nadph) * 0.1 * liver_fn
+    weight = ctx.env.getReactionWeight("phaseI_OxRed")
+    rate = ctx.rate_modifier * min(xen, nadph) * 0.1 * liver_fn * weight
     ctx.env.recordRate("phaseI_OxRed", rate)
     return {"phaseI_intermediates": rate, "nadph": -rate, "nadp_plus": rate}
 
@@ -891,7 +935,8 @@ def phaseII_Conjugation(ctx: Ctx) -> Dict[str, float]:
     paps = ctx.env.getMetabolite("paps")
     gsh = ctx.env.getMetabolite("gsh")
     cof = max(0.0, min(udpga + paps + gsh, inter + 1.0))
-    rate = ctx.rate_modifier * inter * 0.1 * (liver_fn ** 2) * (0.5 + 0.5 * min(cof / 10.0, 1.0))
+    weight = ctx.env.getReactionWeight("phaseII_Conjugation")
+    rate = ctx.rate_modifier * inter * 0.1 * (liver_fn ** 2) * (0.5 + 0.5 * min(cof / 10.0, 1.0)) * weight
     clear = ctx.rate_modifier * conj * 0.05 * max(liver_fn - 0.5, 0.0)
     ctx.env.recordRate("phaseII_Conjugation", rate)
     return {
@@ -906,7 +951,8 @@ def bilirubinUGT(ctx: Ctx) -> Dict[str, float]:
     ib = ctx.env.getMetabolite("indirect_bilirubin")
     udpga = ctx.env.getMetabolite("udpga")
     liver_fn = ctx.env.getParameter("liver_function")
-    rate = ctx.rate_modifier * min(ib, udpga * 0.5) * 0.05 * liver_fn
+    weight = ctx.env.getReactionWeight("bilirubinUGT")
+    rate = ctx.rate_modifier * min(ib, udpga * 0.5) * 0.05 * liver_fn * weight
     ctx.env.recordRate("bilirubinUGT", rate)
     return {"indirect_bilirubin": -rate, "direct_bilirubin": rate, "udpga": -rate * 0.5}
 
@@ -917,7 +963,8 @@ def ethanol_ADH(ctx: Ctx) -> Dict[str, float]:
     substrate_saturation = min(etoh / 1.0, 1.0)
     v_max = 1.5 * liver_fn
     cofactor_limit = min(1.0, nadp / 5.0)
-    rate = ctx.rate_modifier * v_max * substrate_saturation * cofactor_limit
+    weight = ctx.env.getReactionWeight("ethanol_ADH")
+    rate = ctx.rate_modifier * v_max * substrate_saturation * cofactor_limit * weight
     ctx.env.recordRate("ethanol_ADH", rate)
     return {"ethanol": -rate, "acetaldehyde": rate, "nadh": rate * 0.8, "nad_plus": -rate * 0.8}
 
@@ -929,14 +976,16 @@ def acetaldehyde_ALDH(ctx: Ctx) -> Dict[str, float]:
     substrate_saturation = min(acald / 1.0, 1.0)
     v_max = 1.2 * liver_fn * aldh_act
     cofactor_limit = min(1.0, nadp / 5.0)
-    rate = ctx.rate_modifier * v_max * substrate_saturation * cofactor_limit
+    weight = ctx.env.getReactionWeight("acetaldehyde_ALDH")
+    rate = ctx.rate_modifier * v_max * substrate_saturation * cofactor_limit * weight
     ctx.env.recordRate("acetaldehyde_ALDH", rate)
     return {"acetaldehyde": -rate, "acetate": rate, "nadh": rate * 0.8, "nad_plus": -rate * 0.8}
 
 def acetate_to_acetylcoa(ctx: Ctx) -> Dict[str, float]:
     ac = ctx.env.getMetabolite("acetate")
     atp = ctx.env.getMetabolite("atp")
-    rate = ctx.rate_modifier * min(ac, atp * 0.5) * 0.1
+    weight = ctx.env.getReactionWeight("acetate_to_acetylcoa")
+    rate = ctx.rate_modifier * min(ac, atp * 0.5) * 0.1 * weight
     ctx.env.recordRate("acetate_to_acetylcoa", rate)
     return {"acetate": -rate, "acetyl_coa": rate, "atp": -rate * 0.2, "adp": rate * 0.2}
 
@@ -949,7 +998,8 @@ def bileAcidSynthesis(ctx: Ctx) -> Dict[str, float]:
     # 2. 米氏动力学：代替 min(chol, 5.0)，让曲线更圆滑
     km_chol = 5.0
     v_max = 0.1  # 适当调整最大速率
-    rate = ctx.rate_modifier * v_max * (chol / (chol + km_chol)) * energy_guard
+    weight = ctx.env.getReactionWeight("bileAcidSynthesis")
+    rate = ctx.rate_modifier * v_max * (chol / (chol + km_chol)) * energy_guard * weight
     ctx.env.recordRate("bileAcidSynthesis", rate)
     # 3. 真实生理中，合成胆汁酸是消耗 ATP 的
     return {
@@ -969,7 +1019,8 @@ def bileExcretion(ctx: Ctx) -> Dict[str, float]:
     # 速率与当前肝内胆汁酸浓度成正比
     rate = (base_clearance + digestion_boost) * ba
     # 限制单步最大排出量，防止数值震荡
-    actual_rate = min(rate, ba * 0.2)
+    weight = ctx.env.getReactionWeight("bileExcretion")
+    actual_rate = min(rate, ba * 0.2) * weight
     ctx.env.recordRate("bileExcretion", actual_rate)
     return {"bile_acid": -actual_rate}
 
@@ -984,7 +1035,8 @@ def plasmaProteinSynthesis(ctx: Ctx) -> Dict[str, float]:
     capacity_limit = max(0, 1.0 - (alb / 100.0))
     # 3. 动力学计算 (受胰岛素调节)
     v_max = 0.01
-    rate = ctx.rate_modifier * v_max * (aa / (aa + 5.0)) * (0.5 + 0.5 * ins) * energy_guard * capacity_limit
+    weight = ctx.env.getReactionWeight("plasmaProteinSynthesis")
+    rate = ctx.rate_modifier * v_max * (aa / (aa + 5.0)) * (0.5 + 0.5 * ins) * energy_guard * capacity_limit * weight
     ctx.env.recordRate("plasmaProteinSynthesis", rate)
     # 4. 修正能耗：蛋白合成非常耗能，提高 atp 扣除比例
     return {
@@ -1006,7 +1058,11 @@ def coagulationFactorSynthesis(ctx: Ctx) -> Dict[str, float]:
     rate = ctx.rate_modifier * v_max * (aa / (aa + 2.0)) * energy_guard * capacity_limit
     # 3. 引入速率平滑，防止由于 AA 波动导致的数值波动
     prev = ctx.env.getMetabolite("mem_rate_cf")
-    smooth_rate = prev + 0.1 * (rate - prev)
+    actual_smooth_rate = prev + 0.1 * (rate - prev)
+    
+    weight = ctx.env.getReactionWeight("coagulationFactorSynthesis")
+    smooth_rate = actual_smooth_rate * weight
+    
     ctx.env.setMetabolite("mem_rate_cf", smooth_rate)
     ctx.env.recordRate("coagulationFactorSynthesis", smooth_rate)
     return {
@@ -1034,7 +1090,8 @@ def orchestrateGlycogenSynthesis(ctx: Ctx) -> Dict[str, float]:
     
     # 动力学：依赖底物和能量，但降低最大速率
     v_max = 0.3  # 从0.5降低到0.3
-    rate = v_max * (g6p / (g6p + 1.0)) * (atp / (atp + 0.5)) * activation * glycogen_feedback
+    weight = ctx.env.getReactionWeight("orchestrateGlycogenSynthesis")
+    rate = v_max * (g6p / (g6p + 1.0)) * (atp / (atp + 0.5)) * activation * glycogen_feedback * weight
     
     # 安全保护：单步不抽干，降低最大抽取比例
     actual_rate = min(rate, g6p * 0.15, atp * 0.08)  # 降低抽取比例
@@ -1066,7 +1123,8 @@ def orchestrateGlycogenBreakdown(ctx: Ctx) -> Dict[str, float]:
     
     # 动力学：受限于糖原总量，降低最大速率
     v_max = 0.3  # 从0.5降低到0.3
-    rate = v_max * (glycogen / (glycogen + 50.0)) * activation * g6p_feedback
+    weight = ctx.env.getReactionWeight("orchestrateGlycogenBreakdown")
+    rate = v_max * (glycogen / (glycogen + 50.0)) * activation * g6p_feedback * weight
     
     # 安全保护：降低最大分解比例
     actual_rate = min(rate, glycogen * 0.04)  # 从0.05降低到0.04
@@ -1105,7 +1163,8 @@ def orchestrateGluconeogenesis(ctx: Ctx) -> Dict[str, float]:
     lactate = ctx.env.getMetabolite("lactate")
     lactate_boost = (lactate / (lactate + 1.0)) / 0.4
     substrate_boost = np.clip(lactate_boost, 0.5, 2.0)
-    rate = v_max * atp_safety * substrate_boost * 0.8  # 添加0.8阻尼因子
+    weight = ctx.env.getReactionWeight("orchestrateGluconeogenesis")
+    rate = v_max * atp_safety * substrate_boost * 0.8 * weight  # 添加0.8阻尼因子
     outputs = {
         "g6p": rate, 
         "lactate": -rate * 0.4, 
@@ -1197,7 +1256,8 @@ def cytosolicATPase_load(ctx: Ctx) -> Dict[str, float]:
     atp = ctx.env.getMetabolite("atp")
     # rate = ctx.rate_modifier * min(atp, 50.0) * 0.03
     # 原代码 min(atp, 50.0) 在生理单位下永远等于 atp，导致消耗过快
-    rate = ctx.rate_modifier * min(atp, 2.0) * 0.1
+    weight = ctx.env.getReactionWeight("cytosolicATPase_load")
+    rate = ctx.rate_modifier * min(atp, 2.0) * 0.1 * weight
     ctx.env.recordRate("cytosolicATPase_load", rate)
     return {"atp": -rate, "adp": rate}
 

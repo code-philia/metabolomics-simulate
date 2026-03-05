@@ -6,7 +6,7 @@ import os
 import json
 import yaml  # 需要安装: pip install pyyaml
 from pathlib import Path
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -32,7 +32,7 @@ class WebMetabolicEnvironment(MetabolicEnvironment):
         super().update_history(t)
 
 class WebLiveLiverSystem(LiverMetabolismSystem):
-    def step_with_broadcast(self, hour_float, total_minutes, group_id=None):
+    def step_with_broadcast(self, hour_float, total_minutes, group_id=None, sid=None):
         self.step(hour_float)
         socketio.emit('rate_update', {
             'group_id': group_id,
@@ -40,7 +40,7 @@ class WebLiveLiverSystem(LiverMetabolismSystem):
             'rates': self.env.last_step_rates,
             'metabolites': self.env.last_step_metabolites,
             'audit': getattr(self.env, 'last_step_audit', {})
-        })
+        }, to=sid)
         socketio.sleep(0.01)
 
 @app.route('/')
@@ -80,8 +80,31 @@ def get_config():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+simulation_states = {}
+
+@socketio.on('pause_simulation')
+def handle_pause(data):
+    sid = request.sid
+    if sid in simulation_states:
+        simulation_states[sid]['paused'] = data.get('paused', True)
+
+@socketio.on('stop_simulation')
+def handle_stop():
+    sid = request.sid
+    if sid in simulation_states:
+        simulation_states[sid]['stopped'] = True
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    sid = request.sid
+    if sid in simulation_states:
+        del simulation_states[sid]
+
 @socketio.on('start_simulation')
 def handle_start(data):
+    sid = request.sid
+    simulation_states[sid] = {'paused': False, 'stopped': False}
+    
     total_duration = int(data.get('duration', 120))
     events = data.get('events', [])
     group_ids = data.get('group_ids', ['default'])
@@ -93,15 +116,32 @@ def handle_start(data):
         env = WebMetabolicEnvironment()
         # 设置环境参数
         if gid in group_params:
-            for param_name, param_val in group_params[gid].items():
-                if hasattr(env, 'setParameter'):
-                    env.setParameter(param_name, float(param_val))
-                else:
-                    env.parameters[param_name] = float(param_val)
+            params = group_params[gid]
+            # 处理常规环境参数
+            for param_name, param_val in params.items():
+                if param_name != 'reaction_weights':
+                    if hasattr(env, 'setParameter'):
+                        env.setParameter(param_name, float(param_val))
+                    else:
+                        env.parameters[param_name] = float(param_val)
+            
+            # 处理反应权重
+            if 'reaction_weights' in params:
+                for rxn_name, weight in params['reaction_weights'].items():
+                    env.setReactionWeight(rxn_name, float(weight))
         
         systems[gid] = WebLiveLiverSystem(env)
 
     for tt in range(total_duration + 1):
+        # 检查是否需要暂停或停止
+        while sid in simulation_states and simulation_states[sid]['paused']:
+            socketio.sleep(0.1)
+            if simulation_states[sid]['stopped']:
+                break
+        
+        if sid not in simulation_states or simulation_states[sid]['stopped']:
+            break
+            
         for event in events:
             if int(event['time']) == tt:
                 sub = event['substance']
@@ -113,7 +153,11 @@ def handle_start(data):
         
         # 逐个步进
         for gid in group_ids:
-            systems[gid].step_with_broadcast(tt/60.0, tt, group_id=gid)
+            systems[gid].step_with_broadcast(tt/60.0, tt, group_id=gid, sid=sid)
+    
+    socketio.emit('simulation_finished', to=sid)
+    if sid in simulation_states:
+        del simulation_states[sid]
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
