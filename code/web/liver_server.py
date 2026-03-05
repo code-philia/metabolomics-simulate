@@ -32,15 +32,16 @@ class WebMetabolicEnvironment(MetabolicEnvironment):
         super().update_history(t)
 
 class WebLiveLiverSystem(LiverMetabolismSystem):
-    def step_with_broadcast(self, hour_float, total_minutes):
+    def step_with_broadcast(self, hour_float, total_minutes, group_id=None):
         self.step(hour_float)
         socketio.emit('rate_update', {
+            'group_id': group_id,
             'minute': total_minutes,
             'rates': self.env.last_step_rates,
             'metabolites': self.env.last_step_metabolites,
             'audit': getattr(self.env, 'last_step_audit', {})
         })
-        socketio.sleep(0.02)
+        socketio.sleep(0.01)
 
 @app.route('/')
 def index():
@@ -81,19 +82,38 @@ def get_config():
 
 @socketio.on('start_simulation')
 def handle_start(data):
-    env = WebMetabolicEnvironment()
-    system = WebLiveLiverSystem(env)
     total_duration = int(data.get('duration', 120))
     events = data.get('events', [])
+    group_ids = data.get('group_ids', ['default'])
+    group_params = data.get('group_params', {}) # 获取每组的参数
     
+    # 为每个 group 创建独立的系统
+    systems = {}
+    for gid in group_ids:
+        env = WebMetabolicEnvironment()
+        # 设置环境参数
+        if gid in group_params:
+            for param_name, param_val in group_params[gid].items():
+                if hasattr(env, 'setParameter'):
+                    env.setParameter(param_name, float(param_val))
+                else:
+                    env.parameters[param_name] = float(param_val)
+        
+        systems[gid] = WebLiveLiverSystem(env)
+
     for tt in range(total_duration + 1):
         for event in events:
             if int(event['time']) == tt:
                 sub = event['substance']
                 amt = float(event['amount'])
-                if sub in env.metabolites:
-                    env.metabolites[sub] += amt
-        system.step_with_broadcast(tt/60.0, tt)
+                for gid in group_ids:
+                    env = systems[gid].env
+                    if sub in env.metabolites:
+                        env.metabolites[sub] += amt
+        
+        # 逐个步进
+        for gid in group_ids:
+            systems[gid].step_with_broadcast(tt/60.0, tt, group_id=gid)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
